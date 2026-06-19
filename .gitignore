@@ -13,6 +13,8 @@ downloads/
 .env.*
 !.env.example
 *.env.local
+# Public production build values (no secrets) are committed:
+!web/.env.production
 
 # Node / Next.js (in case of running from the root)
 web/node_modules/

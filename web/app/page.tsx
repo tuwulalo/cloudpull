@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import CloudLogo from "@/components/CloudLogo";
 import HeroInteractive from "@/components/landing/HeroInteractive";
+import SiteFooter from "@/components/SiteFooter";
 import { FAQ, HOW_STEPS } from "@/lib/content";
 import { buildJsonLd } from "@/lib/jsonld";
 import { REPO_URL } from "@/lib/site";
@@ -194,21 +195,6 @@ export default function LandingPage() {
             >
               <GitHubMark />
               GitHub
-            </a>
-            <a
-              href="#get"
-              className="cp-orange"
-              style={{
-                fontSize: 14,
-                color: "#fff",
-                textDecoration: "none",
-                fontWeight: 600,
-                padding: "9px 16px",
-                borderRadius: 9,
-                whiteSpace: "nowrap",
-              }}
-            >
-              Open app
             </a>
           </div>
         </div>
@@ -584,28 +570,7 @@ export default function LandingPage() {
       </section>
 
       {/* ============ FOOTER ============ */}
-      <footer style={{ borderTop: "1px solid #ededea" }}>
-        <div
-          style={{
-            ...container,
-            padding: "40px 28px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 20,
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <CloudLogo size={22} />
-            <span style={{ fontFamily: SPACE, fontWeight: 600, fontSize: 16 }}>CloudPull</span>
-          </div>
-          <p style={{ margin: 0, fontSize: 12.5, color: "#9a9aa0", maxWidth: 440, textAlign: "right" }}>
-            For personal use. Respect copyright and the SoundCloud terms of use.
-            CloudPull is not affiliated with SoundCloud.
-          </p>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }
