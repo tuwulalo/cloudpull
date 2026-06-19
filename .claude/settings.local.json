@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -f _apitest.py)",
+      "Bash(rm -rf downloads/*)",
+      "Bash(ls -A downloads)"
+    ]
+  }
+}

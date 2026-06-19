@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+@theme {
+  --font-space: var(--font-space-grotesk), "Space Grotesk", sans-serif;
+  --font-hanken: var(--font-hanken-grotesk), "Hanken Grotesk", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #ffffff;
+  color: #16161a;
+  font-family: var(--font-hanken-grotesk), "Hanken Grotesk", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Brand-colored text selection. */
+::selection {
+  background: rgba(255, 85, 0, 0.22);
+}
+
+/* Orange button on the landing, with its hover state. */
+.cp-orange {
+  background: #ff5500;
+  transition: background 0.15s ease;
+}
+.cp-orange:hover {
+  background: #f04e00;
+}
+
+/* Landing nav links: muted, darken on hover. */
+.cp-navlink {
+  color: #56565e;
+  transition: color 0.15s ease;
+}
+.cp-navlink:hover {
+  color: #16161a;
+}
+
+/* Landing grids. Column counts live here (not inline) so media queries
+   can stack them on smaller screens. */
+.cp-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.cp-formats {
+  grid-template-columns: 0.85fr 1.15fr;
+}
+
+@media (max-width: 860px) {
+  .cp-grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .cp-formats {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .cp-grid-3 {
+    grid-template-columns: 1fr;
+  }
+  .cp-nav {
+    display: none !important;
+  }
+}
+
+/* Inline spinner used while reading a link / starting a download. */
+@keyframes cp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.cp-spin {
+  animation: cp-spin 0.8s linear infinite;
+  transform-origin: center;
+}

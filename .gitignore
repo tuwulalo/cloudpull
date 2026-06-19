@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Downloads and temp files
+downloads/
+*.part
+*.ytdl
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.env.local
+
+# Node / Next.js (in case of running from the root)
+web/node_modules/
+web/.next/
+web/out/
+
+# Cloned third-party SEO skills (kept local, not part of this repo)
+.claude/skills/
