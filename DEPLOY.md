@@ -19,6 +19,23 @@ The bot does not need the domain; it talks to Telegram directly.
 
 ---
 
+## Quick install (one command)
+
+DNS is already pointing at the server. RDP into the VPS, open an
+**Administrator PowerShell**, and run:
+
+```powershell
+irm https://raw.githubusercontent.com/tuwulalo/cloudpull/main/deploy/setup.ps1 | iex
+```
+
+This installs everything, builds the app, and runs the API, web, bot and Caddy
+reverse proxy as auto-start services. It asks for the bot token once. When it
+finishes, open `https://cloudpull.cloud`.
+
+The manual, step-by-step version of the same thing is below.
+
+---
+
 ## 1. DNS on Spaceship
 
 In the Spaceship dashboard for `cloudpull.cloud`, open **Advanced DNS** and add:
