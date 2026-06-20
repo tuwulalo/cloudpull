@@ -250,8 +250,13 @@ def set_admin(user: str, password: str, totp_secret: str) -> None:
     set_setting("admin_user", user)
     set_setting("admin_pw", hash_password(password))
     set_setting("totp_secret", totp_secret)
-    # New credentials invalidate every outstanding session cookie.
-    bump_session_version()
+    # Treat a credential change as a full reset / panic button: fresh TOTP secret
+    # means the replay counter must restart, and rotating the session signing
+    # secret locks out anyone who copied the old DB (they could otherwise forge
+    # a cookie for any version). Re-running admin_setup is the recovery action
+    # after a suspected DB or credential leak.
+    set_setting("totp_last_ctr", "-1")
+    rotate_session_secret()
 
 
 def consume_totp(code: str) -> bool:
@@ -306,8 +311,19 @@ def _session_version() -> int:
 
 
 def bump_session_version() -> None:
-    """Kill-switch: invalidate all existing session cookies at once."""
+    """Cheap kill-switch (logout): invalidate all existing session cookies."""
     set_setting("admin_session_ver", str(_session_version() + 1))
+
+
+def rotate_session_secret() -> None:
+    """Strong reset: generate a new signing secret and bump the version.
+
+    Unlike a version bump alone, this defends against a leaked database: an
+    attacker who copied the old `session_secret` could forge a cookie for any
+    version, but cannot sign one under a secret they have never seen.
+    """
+    set_setting("session_secret", secrets.token_hex(32))
+    bump_session_version()
 
 
 def make_session(ttl_seconds: int = 8 * 3600) -> str:
