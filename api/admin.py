@@ -9,12 +9,12 @@ from __future__ import annotations
 import time
 from collections import deque
 
-import pyotp
 from fastapi import APIRouter, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from api import store
+from api.netutil import client_ip as _client_ip
 
 router = APIRouter()
 COOKIE = "cp_admin"
@@ -23,13 +23,6 @@ COOKIE = "cp_admin"
 _LOGIN_MAX = 8
 _LOGIN_WINDOW = 900  # 15 minutes
 _login_hits: dict[str, deque] = {}
-
-
-def _client_ip(request: Request) -> str:
-    fwd = request.headers.get("x-forwarded-for", "")
-    if fwd:
-        return fwd.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
 
 
 def _login_allowed(ip: str) -> bool:
@@ -91,8 +84,9 @@ def admin_login(
 
     user_ok = username.strip() == (store.get_setting("admin_user") or "")
     pw_ok = store.verify_password(password, store.get_setting("admin_pw"))
-    secret = store.get_setting("totp_secret") or ""
-    code_ok = bool(secret) and pyotp.TOTP(secret).verify(code.strip(), valid_window=1)
+    # Only consume (and advance) the TOTP counter once the username and password
+    # are correct, so a wrong-password attempt cannot burn the admin's code.
+    code_ok = user_ok and pw_ok and store.consume_totp(code)
 
     if not (user_ok and pw_ok and code_ok):
         return HTMLResponse(_login_html("Invalid username, password or code."), status_code=401)
@@ -112,6 +106,9 @@ def admin_login(
 
 @router.post("/admin/logout")
 def admin_logout() -> Response:
+    # Bump the session version so the cookie is revoked server-side, not just
+    # cleared in the browser - a copied cookie stops working immediately.
+    store.bump_session_version()
     redirect = RedirectResponse(url="/admin", status_code=303)
     redirect.delete_cookie(COOKIE, path="/admin")
     return redirect
@@ -138,7 +135,12 @@ class ProxiesBody(BaseModel):
 @router.post("/admin/api/proxies")
 def admin_set_proxies(request: Request, body: ProxiesBody) -> JSONResponse:
     _require(request)
-    store.set_proxies(body.proxies)
+    try:
+        store.set_proxies(body.proxies)
+    except ValueError as exc:
+        # Rejected for pointing at a private/loopback host or an unsupported
+        # scheme (anti-SSRF). Tell the admin which entries failed.
+        return JSONResponse({"error": str(exc)}, status_code=400)
     return JSONResponse({"proxies": store.list_proxies()})
 
 
@@ -441,9 +443,11 @@ saveproxies.onclick=async()=>{
   if(r.ok){el.className='ok';el.innerHTML='<svg width=15 height=15 viewBox="0 0 24 24" fill=none '
     +'stroke="#1c7a39" stroke-width=3 stroke-linecap=round stroke-linejoin=round>'
     +'<path d="m5 12 5 5L20 7"/></svg>Saved';
-    pcount.textContent=lines.length+' active';}
-  else{el.className='err';el.textContent='Error';}
-  setTimeout(()=>{el.textContent='';el.className='';},2200);
+    pcount.textContent=lines.length+' active';
+    setTimeout(()=>{el.textContent='';el.className='';},2200);}
+  else{const j=await r.json().catch(()=>({}));el.className='err';
+    el.textContent=j.error?('Rejected: '+j.error):'Error';
+    setTimeout(()=>{el.textContent='';el.className='';},7000);}
 };
 
 load();loadProxies();setInterval(load,30000);

@@ -36,6 +36,10 @@ cloudpull.cloud, www.cloudpull.cloud {
 		import sec
 		reverse_proxy 127.0.0.1:8000 {
 			flush_interval -1
+			# Trusted client IP for rate limiting. {remote_host} is the real TCP
+			# peer; this SET overwrites any client-supplied X-Real-IP, so it
+			# cannot be spoofed to bypass the per-IP throttle.
+			header_up X-Real-IP {remote_host}
 		}
 	}
 
@@ -43,7 +47,10 @@ cloudpull.cloud, www.cloudpull.cloud {
 	handle /admin* {
 		import sec_admin
 		encode zstd gzip
-		reverse_proxy 127.0.0.1:8000
+		reverse_proxy 127.0.0.1:8000 {
+			# Trusted client IP for the /admin/login brute-force throttle.
+			header_up X-Real-IP {remote_host}
+		}
 	}
 
 	# Next.js landing (everything else). Compress the HTML/CSS/JS.

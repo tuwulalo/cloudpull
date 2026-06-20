@@ -9,12 +9,17 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import json
 import secrets
+import socket
 import sqlite3
 import time
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlparse
+
+import pyotp
 
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "cloudpull.db"
 _PBKDF2_ROUNDS = 200_000
@@ -132,8 +137,76 @@ def list_proxies() -> list[str]:
         return []
 
 
+# Proxy schemes yt-dlp / requests understand. Anything else is rejected so an
+# admin cannot (accidentally or post-compromise) point downloads at, say, a
+# file:// or gopher:// URL.
+_PROXY_SCHEMES = {"http", "https", "socks4", "socks4a", "socks5", "socks5h"}
+
+
+def _ip_is_public(ip_str: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+    return not (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def validate_proxy(raw: str) -> Optional[str]:
+    """Return None if the proxy URL is safe, else a human-readable reason.
+
+    Blocks private/loopback/link-local/reserved targets so a configured proxy
+    cannot be used to reach internal services (SSRF / port scanning from the
+    server). DNS is resolved so a hostname pointing at an internal IP is caught
+    too. (A determined rebind at use-time is still possible - yt-dlp resolves
+    again later - but this stops the realistic admin-misconfig and basic SSRF.)
+    """
+    url = (raw or "").strip()
+    if not url:
+        return "empty entry"
+    parsed = urlparse(url)
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in _PROXY_SCHEMES:
+        return f"unsupported scheme '{parsed.scheme or '(none)'}'"
+    host = parsed.hostname
+    if not host:
+        return "missing host"
+
+    # Literal IP address: check directly.
+    try:
+        ipaddress.ip_address(host)
+        return None if _ip_is_public(host) else f"private/loopback address not allowed ({host})"
+    except ValueError:
+        pass
+
+    low = host.lower()
+    if low == "localhost" or low.endswith((".local", ".internal", ".localhost")):
+        return f"internal hostname not allowed ({host})"
+
+    # Hostname: resolve and reject if ANY resolved address is non-public.
+    try:
+        infos = socket.getaddrinfo(host, parsed.port or 80, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        return f"cannot resolve host ({host})"
+    for info in infos:
+        addr = info[4][0]
+        if not _ip_is_public(addr):
+            return f"host resolves to a private address ({host} -> {addr})"
+    return None
+
+
 def set_proxies(proxies: list[str]) -> None:
+    """Persist proxies after validation. Raises ValueError listing bad entries."""
     clean = [p.strip() for p in proxies if p and p.strip()]
+    problems = [f"{p}: {reason}" for p in clean if (reason := validate_proxy(p))]
+    if problems:
+        raise ValueError("; ".join(problems))
     set_setting("proxies", json.dumps(clean))
 
 
@@ -177,6 +250,42 @@ def set_admin(user: str, password: str, totp_secret: str) -> None:
     set_setting("admin_user", user)
     set_setting("admin_pw", hash_password(password))
     set_setting("totp_secret", totp_secret)
+    # New credentials invalidate every outstanding session cookie.
+    bump_session_version()
+
+
+def consume_totp(code: str) -> bool:
+    """Verify a TOTP code AND reject replays (RFC 6238 5.2).
+
+    The highest accepted time-step counter is persisted; a code is accepted only
+    if its counter is strictly greater than the last one used. So a code that has
+    already logged in once cannot be reused within its 30-90s validity window
+    (e.g. if it leaked via a log, Referer or a malicious extension).
+    """
+    secret = get_setting("totp_secret") or ""
+    code = (code or "").strip()
+    if not secret or not code:
+        return False
+    totp = pyotp.TOTP(secret)
+    now = int(time.time())
+    step = 30
+    current = now // step
+    matched: Optional[int] = None
+    # Accept the previous, current and next step (clock skew tolerance).
+    for offset in (-1, 0, 1):
+        if totp.verify(code, for_time=now + offset * step):
+            matched = current + offset
+            break
+    if matched is None:
+        return False
+    try:
+        last = int(get_setting("totp_last_ctr") or "-1")
+    except ValueError:
+        last = -1
+    if matched <= last:
+        return False  # replay or out-of-order reuse
+    set_setting("totp_last_ctr", str(matched))
+    return True
 
 
 # --- signed admin session (HMAC, no extra deps) -----------------------------
@@ -189,9 +298,21 @@ def _session_secret() -> str:
     return secret
 
 
+def _session_version() -> int:
+    try:
+        return int(get_setting("admin_session_ver") or "1")
+    except ValueError:
+        return 1
+
+
+def bump_session_version() -> None:
+    """Kill-switch: invalidate all existing session cookies at once."""
+    set_setting("admin_session_ver", str(_session_version() + 1))
+
+
 def make_session(ttl_seconds: int = 8 * 3600) -> str:
     expires = int(time.time()) + ttl_seconds
-    message = f"admin.{expires}"
+    message = f"admin.{_session_version()}.{expires}"
     sig = hmac.new(
         _session_secret().encode(), message.encode(), hashlib.sha256
     ).hexdigest()
@@ -203,7 +324,11 @@ def check_session(token: Optional[str]) -> bool:
         return False
     try:
         message, sig = token.rsplit(".", 1)
-        _, expires = message.split(".", 1)
+        prefix, version, expires = message.split(".")
+        if prefix != "admin":
+            return False
+        if int(version) != _session_version():
+            return False  # revoked by logout / credential change
         if int(expires) < time.time():
             return False
     except (ValueError, AttributeError):

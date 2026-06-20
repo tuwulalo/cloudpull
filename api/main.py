@@ -42,6 +42,7 @@ from core import (  # noqa: E402
     max_workers,
 )
 from api import admin, store  # noqa: E402
+from api.netutil import client_ip as _client_ip  # noqa: E402
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DOWNLOADS_DIR = BASE_DIR / "downloads"
@@ -101,24 +102,27 @@ _RATE_WINDOW = 300  # seconds
 _rate_hits: dict[str, deque] = {}
 _rate_lock = threading.Lock()
 
+# Separate, generous bucket for the visit beacon so it cannot pollute analytics
+# unboundedly, yet never steals budget from the expensive /api/info|download
+# limiter above (they use distinct maps).
+_HIT_MAX = int(os.environ.get("CLOUDPULL_HIT_MAX", "30"))
+_hit_hits: dict[str, deque] = {}
 
-def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
 
-
-def _rate_ok(ip: str) -> bool:
+def _bucket_ok(ip: str, hits_map: dict[str, deque], limit: int) -> bool:
     now = time.time()
     with _rate_lock:
-        hits = _rate_hits.setdefault(ip, deque())
+        hits = hits_map.setdefault(ip, deque())
         while hits and now - hits[0] > _RATE_WINDOW:
             hits.popleft()
-        if len(hits) >= _RATE_MAX:
+        if len(hits) >= limit:
             return False
         hits.append(now)
         return True
+
+
+def _rate_ok(ip: str) -> bool:
+    return _bucket_ok(ip, _rate_hits, _RATE_MAX)
 
 
 async def _cleanup_loop() -> None:
@@ -258,8 +262,14 @@ def health() -> dict[str, str]:
 
 
 @app.post("/api/hit")
-def api_hit() -> dict[str, bool]:
-    """Lightweight visit beacon called once per landing page load."""
+def api_hit(request: Request) -> dict[str, bool]:
+    """Lightweight visit beacon called once per landing page load.
+
+    Throttled per real client IP so the public, unauthenticated beacon cannot be
+    used to inflate the dashboard's visit count without limit.
+    """
+    if not _bucket_ok(_client_ip(request), _hit_hits, _HIT_MAX):
+        return {"ok": False}
     store.record("visit")
     return {"ok": True}
 
