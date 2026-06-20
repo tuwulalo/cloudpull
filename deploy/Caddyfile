@@ -15,6 +15,19 @@
 	}
 }
 
+# Same as (sec) but the CSP also allows Google Fonts, which the admin UI uses.
+(sec_admin) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		Content-Security-Policy "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+		-Server
+	}
+}
+
 cloudpull.cloud, www.cloudpull.cloud {
 	# FastAPI backend (yt-dlp + ffmpeg). No compression here: downloads are
 	# already-compressed audio, so gzip would only waste CPU and slow them down.
@@ -26,9 +39,9 @@ cloudpull.cloud, www.cloudpull.cloud {
 		}
 	}
 
-	# Admin panel (served by the API).
+	# Admin panel (served by the API). CSP allows Google Fonts used by its UI.
 	handle /admin* {
-		import sec
+		import sec_admin
 		encode zstd gzip
 		reverse_proxy 127.0.0.1:8000
 	}
