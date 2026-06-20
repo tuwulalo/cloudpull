@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import CloudLogo from "@/components/CloudLogo";
+import AnchorScroll from "@/components/landing/AnchorScroll";
 import HeroInteractive from "@/components/landing/HeroInteractive";
 import SiteFooter from "@/components/SiteFooter";
 import { FAQ, HOW_STEPS } from "@/lib/content";
@@ -132,6 +133,7 @@ export default function LandingPage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
+      <AnchorScroll />
 
       {/* ============ NAV ============ */}
       <header
