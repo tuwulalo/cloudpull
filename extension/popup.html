@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  body { width: 340px; margin: 0; background: #fff; color: #16161a;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .hdr { display: flex; align-items: center; gap: 9px; padding: 14px 16px; border-bottom: 1px solid #ededea; }
+  .hdr img { width: 24px; height: 24px; border-radius: 6px; }
+  .hdr b { font-size: 15px; }
+  .body { padding: 16px; }
+  input { width: 100%; box-sizing: border-box; border: 1px solid #e4e4e0; border-radius: 9px;
+    padding: 10px 11px; font: inherit; font-size: 13px; outline: none; }
+  input:focus { border-color: #ff5500; }
+  .pills { display: flex; gap: 6px; margin: 12px 0; }
+  .pill { flex: 1; text-align: center; padding: 7px 0; border: 1.5px solid #ececec; border-radius: 8px;
+    font-size: 12px; font-weight: 600; color: #8a8a92; cursor: pointer; background: #fafafa; }
+  .pill.active { border-color: #ff5500; background: #fff5ef; color: #ff5500; }
+  .btn { width: 100%; border: 0; border-radius: 10px; background: #ff5500; color: #fff;
+    font-weight: 600; font-size: 14px; padding: 11px; cursor: pointer; }
+  .btn:hover { background: #f04e00; }
+  .btn:disabled { opacity: .6; cursor: default; }
+  .status { margin-top: 12px; font-size: 13px; min-height: 18px; color: #56565e; }
+  .status.ok { color: #1c7a39; font-weight: 600; }
+  .status.err { color: #c2410c; font-weight: 600; }
+  .foot { padding: 0 16px 14px; font-size: 11px; color: #9a9aa0; }
+  .foot a { color: #ff5500; text-decoration: none; }
+</style>
+</head>
+<body>
+  <div class="hdr"><img src="icons/icon48.png" alt=""><b>CloudPull</b></div>
+  <div class="body">
+    <input id="url" placeholder="Paste a SoundCloud track or set link" spellcheck="false">
+    <div class="pills" id="pills">
+      <div class="pill active" data-fmt="mp3">mp3</div>
+      <div class="pill" data-fmt="m4a">m4a</div>
+      <div class="pill" data-fmt="flac">flac</div>
+      <div class="pill" data-fmt="wav">wav</div>
+      <div class="pill" data-fmt="opus">opus</div>
+    </div>
+    <button class="btn" id="dlbtn">Download mp3</button>
+    <div class="status" id="status"></div>
+  </div>
+  <div class="foot">Powered by <a href="https://cloudpull.cloud" target="_blank" rel="noopener">cloudpull.cloud</a> · personal use only</div>
+  <script src="popup.js"></script>
+</body>
+</html>
