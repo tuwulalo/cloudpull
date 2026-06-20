@@ -101,6 +101,28 @@ const formatRows = [
   { name: "wav", desc: "Lossless, uncompressed.", lossless: true },
 ];
 
+// Concrete numbers near the top of the page. Specific, verifiable figures are
+// what AI answer engines extract and cite (geo-citability skill).
+const stats = [
+  { value: "5", label: "Audio formats" },
+  { value: "320 kbps", label: "Top MP3 bitrate" },
+  { value: "2", label: "Lossless options" },
+  { value: "$0", label: "Cost, no account" },
+];
+
+// Visually hidden but read by screen readers and crawlers.
+const srOnly: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0,0,0,0)",
+  whiteSpace: "nowrap",
+  border: 0,
+};
+
 function GitHubMark({ size = 16, fill = "#16161a" }: { size?: number; fill?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} aria-hidden>
@@ -271,16 +293,95 @@ export default function LandingPage() {
               fontSize: 18,
               lineHeight: 1.55,
               color: "#56565e",
-              maxWidth: 560,
+              maxWidth: 580,
               margin: "0 auto 34px",
             }}
           >
-            Paste a track or full set link. CloudPull grabs the audio in your
-            format of choice (mp3, FLAC and more), with cover art and tags baked
-            in.
+            CloudPull is a free SoundCloud downloader. Paste a track or full set
+            link and grab the audio in your format of choice (mp3, FLAC and
+            more), with cover art and tags baked in.
           </p>
 
           <HeroInteractive />
+        </div>
+      </section>
+
+      {/* ============ WHAT IS CLOUDPULL (answer-first, for SEO + AI citation) ============ */}
+      <section id="about" style={{ ...container, padding: "80px 28px 8px" }}>
+        <div style={{ maxWidth: 820, margin: "0 auto" }}>
+          <div style={eyebrow("#ff5500")}>What is CloudPull</div>
+          <h2
+            style={{
+              fontFamily: SPACE,
+              fontWeight: 600,
+              fontSize: "clamp(26px, 5vw, 36px)",
+              letterSpacing: "-.02em",
+              margin: "0 0 18px",
+            }}
+          >
+            A free SoundCloud downloader for any format
+          </h2>
+          <p style={{ margin: "0 0 16px", fontSize: 17, lineHeight: 1.65, color: "#41414a" }}>
+            CloudPull is a free, open-source SoundCloud downloader that saves any
+            public track or set to your device as MP3, M4A, Opus, FLAC or WAV. It
+            runs the download and conversion on the server with yt-dlp and
+            ffmpeg, then streams the finished file straight to your browser, with
+            no account, no app to install, and nothing uploaded to a third party.
+          </p>
+
+          <h3 style={{ fontFamily: SPACE, fontWeight: 600, fontSize: 19, margin: "26px 0 8px" }}>
+            How does CloudPull download SoundCloud tracks?
+          </h3>
+          <p style={{ margin: "0 0 16px", fontSize: 16, lineHeight: 1.65, color: "#41414a" }}>
+            Paste a SoundCloud link and CloudPull reads the title, artist,
+            artwork and full tracklist, fetches the highest-quality source audio,
+            and converts it to your chosen format. A single track arrives as one
+            tagged file; a full set or playlist is packed into a single zip. Most
+            single tracks finish in a few seconds.
+          </p>
+
+          <h3 style={{ fontFamily: SPACE, fontWeight: 600, fontSize: 19, margin: "26px 0 8px" }}>
+            Which audio format should I choose?
+          </h3>
+          <p style={{ margin: "0 0 28px", fontSize: 16, lineHeight: 1.65, color: "#41414a" }}>
+            Choose MP3 at up to 320 kbps for small, universal files that play
+            everywhere. Pick FLAC or WAV for bit-perfect, lossless audio when
+            sound quality matters most. M4A (AAC) and Opus sit in between, giving
+            the best quality per megabyte for streaming and mobile.
+          </p>
+
+          <dl
+            className="cp-grid-4"
+            style={{ display: "grid", gap: 14, margin: 0 }}
+          >
+            {stats.map((s) => (
+              <div
+                key={s.label}
+                style={{
+                  background: "#f7f7f5",
+                  border: "1px solid #ededea",
+                  borderRadius: 14,
+                  padding: "20px 18px",
+                  textAlign: "center",
+                }}
+              >
+                <dt
+                  style={{
+                    fontFamily: SPACE,
+                    fontWeight: 700,
+                    fontSize: 26,
+                    color: "#ff5500",
+                    lineHeight: 1.1,
+                  }}
+                >
+                  {s.value}
+                </dt>
+                <dd style={{ margin: "6px 0 0", fontSize: 13.5, color: "#6b6b73", fontWeight: 500 }}>
+                  {s.label}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </div>
       </section>
 
@@ -412,39 +513,82 @@ export default function LandingPage() {
               ffmpeg and embeds the metadata either way.
             </p>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {formatRows.map((row) => (
-              <div
-                key={row.name}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 16,
-                  padding: "18px 20px",
-                  border: row.lossless ? "1.5px solid #ffcdb0" : "1px solid #e7e7e3",
-                  borderRadius: 12,
-                  background: row.lossless ? "#fffaf6" : "transparent",
-                }}
-              >
-                <span style={{ fontFamily: SPACE, fontWeight: 700, fontSize: 16, width: 52, color: "#16161a" }}>
-                  {row.name}
-                </span>
-                <span style={{ flex: 1, fontSize: 14, color: "#6b6b73" }}>{row.desc}</span>
-                <span
-                  style={{
-                    fontSize: 12,
-                    fontWeight: row.lossless ? 700 : 600,
-                    color: row.lossless ? "#fff" : "#ff5500",
-                    background: row.lossless ? "#ff5500" : "#fff1e9",
-                    padding: "4px 10px",
-                    borderRadius: 6,
-                  }}
-                >
-                  {row.lossless ? "Lossless" : "Lossy"}
-                </span>
-              </div>
-            ))}
-          </div>
+          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: "0 10px" }}>
+            <caption style={srOnly}>
+              SoundCloud download formats compared by name, description and
+              whether the audio is lossless.
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col" style={srOnly}>Format</th>
+                <th scope="col" style={srOnly}>Description</th>
+                <th scope="col" style={srOnly}>Type</th>
+              </tr>
+            </thead>
+            <tbody>
+              {formatRows.map((row) => {
+                const bColor = row.lossless ? "#ffcdb0" : "#e7e7e3";
+                const bWidth = row.lossless ? "1.5px" : "1px";
+                const bg = row.lossless ? "#fffaf6" : "transparent";
+                const cell: CSSProperties = {
+                  borderTop: `${bWidth} solid ${bColor}`,
+                  borderBottom: `${bWidth} solid ${bColor}`,
+                  background: bg,
+                  padding: "16px 0",
+                  verticalAlign: "middle",
+                };
+                return (
+                  <tr key={row.name}>
+                    <th
+                      scope="row"
+                      style={{
+                        ...cell,
+                        borderLeft: `${bWidth} solid ${bColor}`,
+                        borderTopLeftRadius: 12,
+                        borderBottomLeftRadius: 12,
+                        paddingLeft: 20,
+                        width: 72,
+                        textAlign: "left",
+                        fontFamily: SPACE,
+                        fontWeight: 700,
+                        fontSize: 16,
+                        color: "#16161a",
+                      }}
+                    >
+                      {row.name}
+                    </th>
+                    <td style={{ ...cell, paddingRight: 16, fontSize: 14, color: "#6b6b73" }}>
+                      {row.desc}
+                    </td>
+                    <td
+                      style={{
+                        ...cell,
+                        borderRight: `${bWidth} solid ${bColor}`,
+                        borderTopRightRadius: 12,
+                        borderBottomRightRadius: 12,
+                        paddingRight: 20,
+                        textAlign: "right",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: row.lossless ? 700 : 600,
+                          color: row.lossless ? "#fff" : "#ff5500",
+                          background: row.lossless ? "#ff5500" : "#fff1e9",
+                          padding: "4px 10px",
+                          borderRadius: 6,
+                        }}
+                      >
+                        {row.lossless ? "Lossless" : "Lossy"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </section>
 

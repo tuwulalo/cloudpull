@@ -55,12 +55,18 @@ body {
 .cp-grid-3 {
   grid-template-columns: repeat(3, 1fr);
 }
+.cp-grid-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
 .cp-formats {
   grid-template-columns: 0.85fr 1.15fr;
 }
 
 @media (max-width: 860px) {
   .cp-grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .cp-grid-4 {
     grid-template-columns: repeat(2, 1fr);
   }
   .cp-formats {

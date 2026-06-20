@@ -1,6 +1,11 @@
 import Link from "next/link";
 import CloudLogo from "@/components/CloudLogo";
-import { REPO_URL, TELEGRAM_URL } from "@/lib/site";
+import { REPO_URL, SITE_UPDATED, TELEGRAM_URL } from "@/lib/site";
+
+const UPDATED_LABEL = new Date(SITE_UPDATED).toLocaleDateString("en-US", {
+  month: "long",
+  year: "numeric",
+});
 
 const linkStyle = {
   fontSize: 13,
@@ -51,6 +56,7 @@ export default function SiteFooter() {
           <p style={{ margin: 0, fontSize: 12.5, color: "#9a9aa0", maxWidth: 460, textAlign: "right" }}>
             For personal use. Respect copyright and the SoundCloud terms of use.
             CloudPull is not affiliated with SoundCloud.
+            <span style={{ display: "block", marginTop: 6 }}>Updated {UPDATED_LABEL}</span>
           </p>
         </div>
       </div>
