@@ -1,4 +1,4 @@
-# CloudPull (scsaver)
+# CloudPull 
 
 Download music from SoundCloud in popular formats (mp3, m4a, flac, wav, opus).
 Supports single tracks and whole sets/playlists, embeds cover art and tags.
