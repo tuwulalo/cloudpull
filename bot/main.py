@@ -31,6 +31,7 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import (
     BotCommand,
     CallbackQuery,
+    ForceReply,
     FSInputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -61,6 +62,10 @@ dp = Dispatcher()
 # Short-lived map of inline-button key -> request data (callback_data is limited
 # to 64 bytes, so we cannot put the URL in it directly).
 PENDING: dict[str, dict] = {}
+
+# Maps a "send me the link" prompt message id -> the format the user picked, so a
+# bare /mp3 (with no link) can ask for the link and then download in that format.
+PENDING_FMT_PROMPT: dict[int, str] = {}
 
 # Parallelism tuned to the host. Downloads run in this pool (bounded by the
 # semaphore); each handler offloads its work to a background task so the polling
@@ -251,7 +256,14 @@ async def on_format_command(message: Message, command: CommandObject) -> None:
         return
     match = SC_RE.search(command.args or "")
     if not match:
-        await message.reply(f"Send the link too:\n<code>/{fmt} https://soundcloud.com/...</code>")
+        prompt = await message.reply(
+            f"Send the SoundCloud link to download as <b>{fmt.upper()}</b>:",
+            reply_markup=ForceReply(input_field_placeholder="Paste a SoundCloud link"),
+        )
+        # Cap the map so it cannot grow forever if people never reply.
+        if len(PENDING_FMT_PROMPT) > 2000:
+            PENDING_FMT_PROMPT.clear()
+        PENDING_FMT_PROMPT[prompt.message_id] = fmt
         return
 
     status = await message.reply(f"⏳ {fmt.upper()} queued...")
@@ -260,6 +272,20 @@ async def on_format_command(message: Message, command: CommandObject) -> None:
 
 @dp.message(F.text)
 async def on_text(message: Message) -> None:
+    # Is this a reply to a "send me the link" prompt from a bare /mp3 etc.?
+    parent = message.reply_to_message
+    if parent and parent.message_id in PENDING_FMT_PROMPT:
+        fmt = PENDING_FMT_PROMPT.pop(parent.message_id)
+        link = SC_RE.search(message.text or "")
+        if not link:
+            await message.reply(
+                f"That isn't a SoundCloud link. Send one to download as {fmt.upper()}."
+            )
+            return
+        status = await message.reply(f"⏳ {fmt.upper()} queued...")
+        _spawn(_process_download(status, link.group(0), fmt))
+        return
+
     match = SC_RE.search(message.text or "")
     if not match:
         await message.answer(
