@@ -108,7 +108,7 @@ function Set-Svc($name, $exe, $svcArgs, $dir) {
 }
 
 Set-Svc 'cloudpull-api'   $py    '-m uvicorn api.main:app --host 127.0.0.1 --port 8000' $Root
-Set-Svc 'cloudpull-web'   $node  "$nextBin start -p 3000" (Join-Path $Root 'web')
+Set-Svc 'cloudpull-web'   $node  "$nextBin start -H 127.0.0.1 -p 3000" (Join-Path $Root 'web')
 Set-Svc 'cloudpull-bot'   $py    '-m bot.main' $Root
 Set-Svc 'cloudpull-caddy' $caddy "run --config $caddyfile" $Root
 

@@ -10,6 +10,7 @@ from .downloader import (
     DownloadError,
     download,
     get_info,
+    is_supported_url,
     max_workers,
 )
 
@@ -19,5 +20,6 @@ __all__ = [
     "DownloadError",
     "download",
     "get_info",
+    "is_supported_url",
     "max_workers",
 ]

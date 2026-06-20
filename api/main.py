@@ -14,15 +14,19 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import sys
 import threading
+import time
 import uuid
 import zipfile
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
@@ -34,6 +38,7 @@ from core import (  # noqa: E402
     QUALITIES,
     DownloadError,
     downloader,
+    is_supported_url,
     max_workers,
 )
 
@@ -41,14 +46,37 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DOWNLOADS_DIR = BASE_DIR / "downloads"
 DOWNLOADS_DIR.mkdir(exist_ok=True)
 
-app = FastAPI(title="scsaver API", version="1.0.0")
+# Allowed browser origins. Tightened from "*" so arbitrary sites cannot drive
+# the API from a browser. Override with CLOUDPULL_ALLOWED_ORIGINS (comma list).
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "CLOUDPULL_ALLOWED_ORIGINS",
+        "https://cloudpull.cloud,https://www.cloudpull.cloud,"
+        "http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
+    if o.strip()
+]
 
-# In dev the Next.js frontend runs on :3000, the API on :8000.
+DOWNLOAD_TTL = 1800  # keep a finished download this many seconds, then prune
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    cleaner = asyncio.create_task(_cleanup_loop())
+    try:
+        yield
+    finally:
+        cleaner.cancel()
+
+
+app = FastAPI(title="CloudPull API", version="1.0.0", lifespan=lifespan)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 # In-memory job state. Good enough for a single user / dev mode.
@@ -60,6 +88,53 @@ _jobs_lock = threading.Lock()
 _executor = ThreadPoolExecutor(
     max_workers=max_workers(), thread_name_prefix="cloudpull-dl"
 )
+
+# Simple in-memory per-IP rate limit for the expensive endpoints, so a public
+# no-account service cannot be trivially spammed into a denial of service.
+_RATE_MAX = int(os.environ.get("CLOUDPULL_RATE_MAX", "40"))
+_RATE_WINDOW = 300  # seconds
+_rate_hits: dict[str, deque] = {}
+_rate_lock = threading.Lock()
+
+
+def _client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _rate_ok(ip: str) -> bool:
+    now = time.time()
+    with _rate_lock:
+        hits = _rate_hits.setdefault(ip, deque())
+        while hits and now - hits[0] > _RATE_WINDOW:
+            hits.popleft()
+        if len(hits) >= _RATE_MAX:
+            return False
+        hits.append(now)
+        return True
+
+
+async def _cleanup_loop() -> None:
+    """Delete old download folders and prune dead jobs so the disk cannot fill."""
+    while True:
+        await asyncio.sleep(300)
+        cutoff = time.time() - DOWNLOAD_TTL
+        try:
+            for entry in DOWNLOADS_DIR.iterdir():
+                try:
+                    if entry.is_dir() and entry.stat().st_mtime < cutoff:
+                        shutil.rmtree(entry, ignore_errors=True)
+                except OSError:
+                    pass
+        except OSError:
+            pass
+        with _jobs_lock:
+            for jid in list(_jobs):
+                result = _jobs[jid].get("result")
+                if result and not os.path.exists(result):
+                    _jobs.pop(jid, None)
 
 
 class InfoRequest(BaseModel):
@@ -148,8 +223,8 @@ def _run_job(job_id: str, req: DownloadRequest) -> None:
         )
     except DownloadError as exc:
         _set_job(job_id, status="error", error=str(exc))
-    except Exception as exc:  # noqa: BLE001 - catch all in the worker to report to the client
-        _set_job(job_id, status="error", error=f"Internal error: {exc}")
+    except Exception:  # noqa: BLE001 - never leak internal details to the client
+        _set_job(job_id, status="error", error="Internal error during download")
 
 
 @app.get("/api/health")
@@ -169,22 +244,35 @@ def formats() -> dict[str, Any]:
 
 
 @app.post("/api/info")
-def api_info(req: InfoRequest) -> dict[str, Any]:
+def api_info(req: InfoRequest, request: Request) -> dict[str, Any]:
     url = req.url.strip()
     if not url:
         raise HTTPException(status_code=400, detail="Empty link")
+    if not is_supported_url(url):
+        raise HTTPException(status_code=400, detail="Only SoundCloud links are supported")
+    if not _rate_ok(_client_ip(request)):
+        raise HTTPException(status_code=429, detail="Too many requests, slow down")
     try:
         return downloader.get_info(url)
     except DownloadError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Could not read this link") from exc
 
 
 @app.post("/api/download")
-def api_download(req: DownloadRequest) -> dict[str, str]:
-    if not req.url.strip():
+def api_download(req: DownloadRequest, request: Request) -> dict[str, str]:
+    url = req.url.strip()
+    if not url:
         raise HTTPException(status_code=400, detail="Empty link")
+    if not is_supported_url(url):
+        raise HTTPException(status_code=400, detail="Only SoundCloud links are supported")
     if req.format.lower() not in AUDIO_FORMATS:
         raise HTTPException(status_code=400, detail=f"Unknown format: {req.format}")
+    if req.quality not in QUALITIES and req.quality != "0":
+        raise HTTPException(status_code=400, detail="Invalid quality")
+    if not _rate_ok(_client_ip(request)):
+        raise HTTPException(status_code=429, detail="Too many requests, slow down")
 
     job_id = uuid.uuid4().hex[:12]
     with _jobs_lock:

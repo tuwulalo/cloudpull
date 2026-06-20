@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 from typing import Any, Callable, Optional
+from urllib.parse import urlparse
 
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError as _YtDownloadError
@@ -19,6 +20,22 @@ from yt_dlp.utils import DownloadError as _YtDownloadError
 
 class DownloadError(Exception):
     """Single error type for the upper layers (API, bot)."""
+
+
+def is_supported_url(url: str) -> bool:
+    """Only accept SoundCloud links.
+
+    This is the SSRF guard: without it, an arbitrary URL handed to yt-dlp could
+    make the server fetch internal addresses (cloud metadata, localhost, etc.).
+    """
+    try:
+        parsed = urlparse((url or "").strip())
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = (parsed.hostname or "").lower()
+    return host == "soundcloud.com" or host.endswith(".soundcloud.com")
 
 
 # Supported formats. lossless -> quality (bitrate) is ignored.
@@ -95,6 +112,8 @@ def _normalize_info(info: dict[str, Any]) -> dict[str, Any]:
 
 def get_info(url: str) -> dict[str, Any]:
     """Return metadata for a link without downloading the file."""
+    if not is_supported_url(url):
+        raise DownloadError("Only SoundCloud links are supported")
     opts = {
         "quiet": True,
         "no_warnings": True,
@@ -157,6 +176,8 @@ def download(
     Returns a list of paths to the produced audio files.
     progress_hook receives raw yt-dlp dicts (status/downloaded_bytes/...).
     """
+    if not is_supported_url(url):
+        raise DownloadError("Only SoundCloud links are supported")
     fmt = fmt.lower()
     if fmt not in AUDIO_FORMATS:
         raise DownloadError(f"Unsupported format: {fmt}")
