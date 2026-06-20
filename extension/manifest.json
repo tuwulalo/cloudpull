@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CloudPull: SoundCloud downloader",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Download SoundCloud tracks and sets in mp3, m4a, flac, wav or opus, with cover art and tags, via CloudPull.",
   "action": {
     "default_popup": "popup.html",
@@ -18,5 +18,21 @@
     "128": "icons/icon128.png"
   },
   "permissions": ["activeTab", "downloads"],
-  "host_permissions": ["https://cloudpull.cloud/*"]
+  "host_permissions": ["https://cloudpull.cloud/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://soundcloud.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/icon48.png", "icons/icon128.png"],
+      "matches": ["https://soundcloud.com/*"]
+    }
+  ]
 }

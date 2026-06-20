@@ -26,6 +26,15 @@ Keep the popup open until it says "Saved to your device". A single track takes
 a few seconds; a whole set takes longer, so for big sets the web app
 (`cloudpull.cloud`) is more convenient.
 
+### On-page button
+
+On a SoundCloud track or set page the extension also adds a small CloudPull
+icon to the action bar (next to like / repost / share). Click it to download
+the current track as mp3 in one click, without opening the popup. The button
+spins while it works and stops when the file is saved. For other formats use
+the popup. (If you reload the extension you may need to refresh the SoundCloud
+tab for the button to appear.)
+
 ## How it works
 
 - `POST /api/download` starts a job, `GET /api/progress/{id}` streams progress,
