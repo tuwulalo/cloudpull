@@ -252,34 +252,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ============ TRUST BAND ============ */}
-      <div style={{ borderBottom: "1px solid #ededea" }}>
-        <div
-          style={{
-            ...container,
-            padding: "20px 28px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 14,
-            flexWrap: "wrap",
-            fontSize: 13.5,
-            color: "#8a8a92",
-            fontWeight: 500,
-          }}
-        >
-          <span>Single tracks</span>
-          <span style={{ color: "#dcdcd8" }}>·</span>
-          <span>Full sets &amp; playlists</span>
-          <span style={{ color: "#dcdcd8" }}>·</span>
-          <span>Cover art + tags</span>
-          <span style={{ color: "#dcdcd8" }}>·</span>
-          <span>Lossless FLAC / WAV</span>
-          <span style={{ color: "#dcdcd8" }}>·</span>
-          <span>Live progress</span>
-        </div>
-      </div>
-
       {/* ============ HOW IT WORKS ============ */}
       <section id="how" style={{ ...container, padding: "88px 28px" }}>
         <div style={{ textAlign: "center", marginBottom: 54 }}>

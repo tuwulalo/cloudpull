@@ -336,40 +336,7 @@ export default function HeroInteractive() {
             textAlign: "left",
           }}
         >
-          {/* window chrome */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 7,
-              padding: "13px 18px",
-              borderBottom: "1px solid #f0f0ec",
-            }}
-          >
-            {[0, 1, 2].map((i) => (
-              <span
-                key={i}
-                style={{
-                  width: 11,
-                  height: 11,
-                  borderRadius: "50%",
-                  background: "#e4e4e0",
-                }}
-              />
-            ))}
-            <span
-              style={{
-                marginLeft: 8,
-                fontSize: 12,
-                color: "#a6a6ac",
-                fontFamily: SPACE,
-              }}
-            >
-              cloudpull · local
-            </span>
-          </div>
-
-          <div style={{ padding: 20 }}>
+          <div style={{ padding: 28 }}>
             {/* track row */}
             <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
               {info?.thumbnail ? (
@@ -570,20 +537,20 @@ export default function HeroInteractive() {
             {phase === "done" && (
               <div
                 style={{
-                  marginTop: 14,
+                  marginTop: 16,
                   display: "flex",
                   alignItems: "center",
-                  gap: 12,
+                  gap: 14,
                   background: "#f1f9f2",
                   border: "1px solid #cdeccf",
-                  borderRadius: 10,
-                  padding: "12px 14px",
+                  borderRadius: 14,
+                  padding: "18px 20px",
                 }}
               >
                 <div
                   style={{
-                    width: 30,
-                    height: 30,
+                    width: 38,
+                    height: 38,
                     flex: "none",
                     borderRadius: "50%",
                     background: "#22a04a",
@@ -593,8 +560,8 @@ export default function HeroInteractive() {
                   }}
                 >
                   <svg
-                    width="16"
-                    height="16"
+                    width="20"
+                    height="20"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="#fff"
@@ -606,12 +573,12 @@ export default function HeroInteractive() {
                   </svg>
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600, color: "#1c7a39" }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "#1c7a39" }}>
                     Saved to your device
                   </div>
                   <div
                     style={{
-                      fontSize: 12,
+                      fontSize: 13,
                       color: "#5b9a6b",
                       fontFamily: SPACE,
                       overflow: "hidden",
