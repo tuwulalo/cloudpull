@@ -38,7 +38,9 @@ Step 'Making ffmpeg available to background services'
 # tasks (and yt-dlp) can find it regardless of the installing user's PATH.
 foreach ($tool in 'ffmpeg', 'ffprobe') {
   $src = (Get-Command $tool -ErrorAction SilentlyContinue).Source
-  if ($src) { Copy-Item $src $Bin -Force }
+  $dst = Join-Path $Bin "$tool.exe"
+  # Skip if it already resolves to our bin copy (avoids copy-onto-itself on re-run).
+  if ($src -and ($src -ine $dst)) { Copy-Item $src $dst -Force }
 }
 $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
 if ($machinePath -notlike "*$Bin*") {
