@@ -13,6 +13,12 @@ git -C $Root checkout -f -B main origin/main
 Step 'Python deps'
 & (Join-Path $Root '.venv\Scripts\python.exe') -m pip install -r (Join-Path $Root 'requirements.txt')
 
+# Stop the web service first: a running `next start` locks node_modules and
+# .next, which makes `npm ci` fail with EPERM while it wipes node_modules.
+Step 'Stopping web for a clean rebuild'
+Stop-ScheduledTask -TaskName cloudpull-web -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 3
+
 Step 'Rebuilding web'
 Push-Location (Join-Path $Root 'web')
 npm ci
