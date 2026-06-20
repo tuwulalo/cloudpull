@@ -4,7 +4,7 @@ import HeroInteractive from "@/components/landing/HeroInteractive";
 import SiteFooter from "@/components/SiteFooter";
 import { FAQ, HOW_STEPS } from "@/lib/content";
 import { buildJsonLd } from "@/lib/jsonld";
-import { REPO_URL } from "@/lib/site";
+import { REPO_URL, TELEGRAM_URL } from "@/lib/site";
 
 const SPACE = "var(--font-space-grotesk)";
 
@@ -108,6 +108,14 @@ function GitHubMark({ size = 16, fill = "#16161a" }: { size?: number; fill?: str
   );
 }
 
+function TelegramMark({ size = 16, fill = "#fff" }: { size?: number; fill?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} aria-hidden>
+      <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z" />
+    </svg>
+  );
+}
+
 export default function LandingPage() {
   const jsonLd = buildJsonLd();
 
@@ -195,6 +203,27 @@ export default function LandingPage() {
             >
               <GitHubMark />
               GitHub
+            </a>
+            <a
+              href={TELEGRAM_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="cp-orange"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+                fontSize: 14,
+                color: "#fff",
+                textDecoration: "none",
+                fontWeight: 600,
+                padding: "9px 16px",
+                borderRadius: 9,
+                whiteSpace: "nowrap",
+              }}
+            >
+              <TelegramMark />
+              Telegram
             </a>
           </div>
         </div>

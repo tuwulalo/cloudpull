@@ -9,6 +9,10 @@ export const SITE_URL = (
 // Where the source repo lives. Set NEXT_PUBLIC_REPO_URL when it exists.
 export const REPO_URL = process.env.NEXT_PUBLIC_REPO_URL || "";
 
+// Telegram bot link.
+export const TELEGRAM_URL =
+  process.env.NEXT_PUBLIC_TELEGRAM_URL || "https://t.me/cloudpullbot";
+
 export const SITE = {
   name: "CloudPull",
   shortName: "CloudPull",

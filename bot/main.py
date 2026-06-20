@@ -17,6 +17,7 @@ import html
 import os
 import re
 import shutil
+import subprocess
 import sys
 import uuid
 import zipfile
@@ -74,6 +75,26 @@ def _safe(name: str) -> str:
     return re.sub(r'[<>:"/\\|?*]', "_", name or "").strip() or "cloudpull-set"
 
 
+def _extract_cover(audio_path: str, out_dir: Path) -> Path | None:
+    """Pull the embedded cover out of the audio file as a small JPEG to use as
+    the Telegram audio thumbnail (Telegram needs JPEG, <=320px, <200 KB)."""
+    cover = out_dir / "cover.jpg"
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", audio_path, "-an",
+                "-vf", "scale='min(320,iw)':-2", "-frames:v", "1", "-q:v", "4",
+                str(cover),
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    return cover if cover.exists() and cover.stat().st_size > 0 else None
+
+
 async def _run_download(url: str, fmt: str) -> list[str]:
     out_dir = DOWNLOADS / uuid.uuid4().hex[:10]
     return await asyncio.to_thread(download, url, fmt, "320", str(out_dir), True)
@@ -98,11 +119,13 @@ async def _deliver(
                 )
                 return
             await status.edit_text("⬆️ Uploading...")
+            cover = await asyncio.to_thread(_extract_cover, path, out_dir)
             await status.answer_audio(
                 audio=FSInputFile(path),
                 title=title or None,
                 performer=uploader or None,
                 caption=caption,
+                thumbnail=FSInputFile(str(cover)) if cover else None,
             )
         else:
             zip_path = out_dir / f"{_safe(title or 'cloudpull-set')}.zip"

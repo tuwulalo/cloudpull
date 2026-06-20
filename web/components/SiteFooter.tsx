@@ -1,6 +1,6 @@
 import Link from "next/link";
 import CloudLogo from "@/components/CloudLogo";
-import { REPO_URL } from "@/lib/site";
+import { REPO_URL, TELEGRAM_URL } from "@/lib/site";
 
 const linkStyle = {
   fontSize: 13,
@@ -39,6 +39,9 @@ export default function SiteFooter() {
             <Link href="/privacy" className="cp-navlink" style={linkStyle}>
               Privacy
             </Link>
+            <a href={TELEGRAM_URL} target="_blank" rel="noopener noreferrer" className="cp-navlink" style={linkStyle}>
+              Telegram
+            </a>
             {REPO_URL ? (
               <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="cp-navlink" style={linkStyle}>
                 GitHub
