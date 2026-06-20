@@ -51,13 +51,14 @@ AUDIO_FORMATS: dict[str, dict[str, Any]] = {
 # Bitrates for lossy formats (kbps). "0" = best available (VBR).
 QUALITIES: list[str] = ["320", "256", "192", "128"]
 
-# Retry/backoff so transient SoundCloud rate limits (429) recover instead of
-# failing outright, with a small pause between extractor requests for politeness.
+# Speed + resilience. Concurrent fragment downloads make HLS streams much faster;
+# retries (with yt-dlp's own backoff) absorb transient SoundCloud 429s without an
+# artificial per-request delay. Use proxies (admin panel) if you hit limits hard.
 _RESILIENCE: dict[str, Any] = {
     "retries": 5,
     "extractor_retries": 3,
     "fragment_retries": 5,
-    "sleep_interval_requests": 0.7,
+    "concurrent_fragment_downloads": 5,
 }
 
 

@@ -119,6 +119,18 @@ foreach ($port in 80, 443) {
   }
 }
 
+Step 'Installing watchdog (health check every 2 min)'
+$wdAction = New-ScheduledTaskAction -Execute 'powershell.exe' `
+  -Argument "-NoProfile -ExecutionPolicy Bypass -File $Root\deploy\watchdog.ps1"
+$wdTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date)
+$wdTrigger.Repetition = (New-ScheduledTaskTrigger -Once -At (Get-Date) `
+  -RepetitionInterval (New-TimeSpan -Minutes 2) `
+  -RepetitionDuration (New-TimeSpan -Days 3650)).Repetition
+$wdPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+$wdSettings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+Register-ScheduledTask -TaskName 'cloudpull-watchdog' -Action $wdAction -Trigger $wdTrigger `
+  -Principal $wdPrincipal -Settings $wdSettings -Force | Out-Null
+
 Start-Sleep -Seconds 6
 Step 'Status'
 foreach ($s in 'cloudpull-api', 'cloudpull-web', 'cloudpull-bot', 'cloudpull-caddy') {
