@@ -8,15 +8,14 @@
   // Inject the button styles once.
   const style = document.createElement("style");
   style.textContent = `
-    .cloudpull-dl{display:inline-flex;align-items:center;justify-content:center;
-      cursor:pointer;border:0;background:transparent;padding:0 6px;height:100%;
-      vertical-align:middle}
-    .cloudpull-dl img{width:16px;height:16px;display:block;
-      transition:transform .15s ease;opacity:.85}
-    .cloudpull-dl:hover img{opacity:1;transform:scale(1.12)}
-    .cloudpull-dl.cp-loading img{animation:cp-spin .8s linear infinite}
-    .cloudpull-dl.cp-ok img{filter:none}
-    @keyframes cp-spin{to{transform:rotate(360deg)}}
+    .cloudpull-dl{display:inline-flex !important;align-items:center;justify-content:center;
+      cursor:pointer;border:0;background:transparent;vertical-align:middle}
+    .cloudpull-dl img{height:65%;width:auto;min-height:18px;max-height:24px;display:block;
+      opacity:.7;transition:opacity .15s ease}
+    .cloudpull-dl:hover img{opacity:1}
+    .cloudpull-dl.cp-loading img{animation:cp-pulse 1s ease-in-out infinite}
+    .cloudpull-dl.cp-ok img{opacity:1}
+    @keyframes cp-pulse{0%,100%{opacity:1}50%{opacity:.25}}
   `;
   document.documentElement.appendChild(style);
 
@@ -27,11 +26,20 @@
     return location.origin + path;
   }
 
-  function makeButton() {
+  function makeButton(sibling) {
     const btn = document.createElement("button");
-    btn.className = "cloudpull-dl sc-button";
+    btn.className = "sc-button cloudpull-dl";
     btn.type = "button";
     btn.title = "Download with CloudPull";
+    // Match the sibling action button's box so our icon sits at the same size
+    // and scales with SoundCloud's responsive buttons.
+    if (sibling) {
+      const h = sibling.getBoundingClientRect().height;
+      if (h) {
+        btn.style.height = h + "px";
+        btn.style.width = h + "px";
+      }
+    }
     const img = document.createElement("img");
     img.src = ICON;
     img.alt = "Download";
@@ -66,7 +74,7 @@
     if (!main) return;
     const group = main.closest(".sc-button-group") || main.parentElement;
     if (!group || group.querySelector(".cloudpull-dl")) return;
-    group.appendChild(makeButton());
+    group.appendChild(makeButton(main));
   }
 
   // SoundCloud is a SPA; re-inject as the DOM changes.
