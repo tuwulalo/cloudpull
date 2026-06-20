@@ -22,6 +22,9 @@ Start-Sleep -Seconds 3
 Step 'Rebuilding web'
 Push-Location (Join-Path $Root 'web')
 npm ci
+# Wipe the previous build so the served HTML and the static chunks always match
+# (a stale/partial .next causes 404s on CSS/JS chunks).
+Remove-Item -Recurse -Force .next -ErrorAction SilentlyContinue
 npm run build
 Pop-Location
 
