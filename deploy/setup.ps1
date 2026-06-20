@@ -3,10 +3,10 @@
 # Run in an ADMINISTRATOR PowerShell on the VPS:
 #   irm https://raw.githubusercontent.com/tuwulalo/cloudpull/main/deploy/setup.ps1 | iex
 #
-# It installs Node, Python, ffmpeg, Caddy and NSSM, clones the repo, builds the
-# app, and runs the API + web + bot + reverse proxy as auto-start services.
-# Safe to re-run to update (git pull + rebuild + restart). It asks for the bot
-# token only once and stores it in C:\cloudpull\.env (never committed).
+# Installs Node, Python, ffmpeg and Caddy, clones the repo, builds the app, and
+# runs the API + web + bot + reverse proxy as auto-start Scheduled Tasks (SYSTEM,
+# survive reboot/logoff). Safe to re-run to update. Asks for the bot token once
+# and stores it in C:\cloudpull\.env (never committed). No NSSM dependency.
 
 $ErrorActionPreference = 'Stop'
 $Root  = 'C:\cloudpull'
@@ -19,14 +19,12 @@ function RefreshPath {
               [Environment]::GetEnvironmentVariable('Path', 'User')
 }
 
-# --- must be admin ---
 $isAdmin = ([Security.Principal.WindowsPrincipal] `
   [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
   [Security.Principal.WindowsBuiltinRole]::Administrator)
-if (-not $isAdmin) {
-  Write-Error 'Please run this in an Administrator PowerShell window.'
-  return
-}
+if (-not $isAdmin) { Write-Error 'Please run this in an Administrator PowerShell window.'; return }
+
+New-Item -ItemType Directory -Force -Path $Bin | Out-Null
 
 Step 'Installing prerequisites via winget'
 foreach ($p in 'Git.Git', 'OpenJS.NodeJS.LTS', 'Python.Python.3.12', 'Gyan.FFmpeg') {
@@ -35,26 +33,38 @@ foreach ($p in 'Git.Git', 'OpenJS.NodeJS.LTS', 'Python.Python.3.12', 'Gyan.FFmpe
 }
 RefreshPath
 
-Step 'Fetching Caddy + NSSM'
-New-Item -ItemType Directory -Force -Path $Bin | Out-Null
+Step 'Making ffmpeg available to background services'
+# Copy ffmpeg next to the app and put it on the Machine PATH, so SYSTEM-run
+# tasks (and yt-dlp) can find it regardless of the installing user's PATH.
+foreach ($tool in 'ffmpeg', 'ffprobe') {
+  $src = (Get-Command $tool -ErrorAction SilentlyContinue).Source
+  if ($src) { Copy-Item $src $Bin -Force }
+}
+$machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+if ($machinePath -notlike "*$Bin*") {
+  [Environment]::SetEnvironmentVariable('Path', "$machinePath;$Bin", 'Machine')
+}
+RefreshPath
+
+Step 'Fetching Caddy'
 if (-not (Test-Path "$Bin\caddy.exe")) {
   Invoke-WebRequest -Uri 'https://caddyserver.com/api/download?os=windows&arch=amd64' -OutFile "$Bin\caddy.exe"
 }
-if (-not (Test-Path "$Bin\nssm.exe")) {
-  $zip = Join-Path $env:TEMP 'nssm.zip'
-  $dst = Join-Path $env:TEMP 'nssm'
-  Invoke-WebRequest -Uri 'https://nssm.cc/release/nssm-2.24.zip' -OutFile $zip
-  Expand-Archive -Path $zip -DestinationPath $dst -Force
-  Copy-Item (Join-Path $dst 'nssm-2.24\win64\nssm.exe') "$Bin\nssm.exe" -Force
-}
-$nssm  = "$Bin\nssm.exe"
 $caddy = "$Bin\caddy.exe"
 
 Step 'Getting the code'
 if (Test-Path (Join-Path $Root '.git')) {
-  git -C $Root pull
+  git -C $Root fetch --depth 1 origin main
+  git -C $Root reset --hard origin/main
+} elseif ((Get-ChildItem $Root -Force | Where-Object { $_.Name -ne 'bin' } | Measure-Object).Count -gt 0 -or (Test-Path $Bin)) {
+  # Directory already has files (e.g. bin\caddy.exe) but is not a git repo yet.
+  git -C $Root init
+  git -C $Root remote remove origin 2>$null
+  git -C $Root remote add origin $Repo
+  git -C $Root fetch --depth 1 origin main
+  git -C $Root checkout -f -B main origin/main
 } else {
-  git clone $Repo $Root
+  git clone --depth 1 $Repo $Root
 }
 
 Step 'Python backend (venv + deps)'
@@ -79,24 +89,24 @@ npm ci
 npm run build
 Pop-Location
 
-Step 'Installing services (NSSM)'
-$node    = (Get-Command node).Source
-$nextBin = Join-Path $Root 'web\node_modules\next\dist\bin\next'
+Step 'Installing auto-start services (Scheduled Tasks, run as SYSTEM)'
+$node      = (Get-Command node).Source
+$nextBin   = Join-Path $Root 'web\node_modules\next\dist\bin\next'
 $caddyfile = Join-Path $Root 'deploy\Caddyfile'
 
 function Set-Svc($name, $exe, $svcArgs, $dir) {
-  & $nssm stop $name 2>$null | Out-Null
-  & $nssm remove $name confirm 2>$null | Out-Null
-  & $nssm install $name $exe | Out-Null
-  & $nssm set $name AppParameters $svcArgs | Out-Null
-  & $nssm set $name AppDirectory $dir | Out-Null
-  & $nssm set $name Start SERVICE_AUTO_START | Out-Null
-  & $nssm set $name AppStdout (Join-Path $Root "logs\$name.log") | Out-Null
-  & $nssm set $name AppStderr (Join-Path $Root "logs\$name.log") | Out-Null
-  & $nssm start $name | Out-Null
+  Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue
+  $action    = New-ScheduledTaskAction -Execute $exe -Argument $svcArgs -WorkingDirectory $dir
+  $trigger   = New-ScheduledTaskTrigger -AtStartup
+  $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+  $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+                 -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero) `
+                 -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
+  Register-ScheduledTask -TaskName $name -Action $action -Trigger $trigger `
+                 -Principal $principal -Settings $settings | Out-Null
+  Start-ScheduledTask -TaskName $name
 }
 
-New-Item -ItemType Directory -Force -Path (Join-Path $Root 'logs') | Out-Null
 Set-Svc 'cloudpull-api'   $py    '-m uvicorn api.main:app --host 127.0.0.1 --port 8000' $Root
 Set-Svc 'cloudpull-web'   $node  "$nextBin start -p 3000" (Join-Path $Root 'web')
 Set-Svc 'cloudpull-bot'   $py    '-m bot.main' $Root
@@ -109,10 +119,15 @@ foreach ($port in 80, 443) {
   }
 }
 
+Start-Sleep -Seconds 6
 Step 'Status'
 foreach ($s in 'cloudpull-api', 'cloudpull-web', 'cloudpull-bot', 'cloudpull-caddy') {
-  Write-Host ("  {0,-18} {1}" -f $s, (& $nssm status $s))
+  $state = (Get-ScheduledTask -TaskName $s -ErrorAction SilentlyContinue).State
+  Write-Host ("  {0,-18} {1}" -f $s, $state)
 }
+Write-Host 'Listening ports:'
+Get-NetTCPConnection -State Listen -LocalPort 80, 443, 3000, 8000 -ErrorAction SilentlyContinue |
+  Select-Object -ExpandProperty LocalPort | Sort-Object -Unique | ForEach-Object { Write-Host "  $_" }
 
 Write-Host "`nAll set. Open https://cloudpull.cloud" -ForegroundColor Green
 Write-Host 'Caddy issues the TLS certificate automatically on the first request (DNS already points here).' -ForegroundColor Green
