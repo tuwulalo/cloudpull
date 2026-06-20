@@ -9,9 +9,10 @@
   const style = document.createElement("style");
   style.textContent = `
     .cloudpull-dl{display:inline-flex !important;align-items:center;justify-content:center;
-      cursor:pointer;border:0;background:transparent;vertical-align:middle}
-    .cloudpull-dl img{height:65%;width:auto;min-height:18px;max-height:24px;display:block;
-      opacity:.7;transition:opacity .15s ease}
+      box-sizing:border-box;height:32px;padding:6px 12px;margin:0 16px 0 0;
+      background:#303030;border:0;border-radius:4px;cursor:pointer;vertical-align:middle}
+    .cloudpull-dl:hover{background:#3a3a3a}
+    .cloudpull-dl img{height:100%;width:auto;display:block;opacity:.9;transition:opacity .15s ease}
     .cloudpull-dl:hover img{opacity:1}
     .cloudpull-dl.cp-loading img{animation:cp-pulse 1s ease-in-out infinite}
     .cloudpull-dl.cp-ok img{opacity:1}
@@ -35,10 +36,7 @@
     // and scales with SoundCloud's responsive buttons.
     if (sibling) {
       const h = sibling.getBoundingClientRect().height;
-      if (h) {
-        btn.style.height = h + "px";
-        btn.style.width = h + "px";
-      }
+      if (h) btn.style.height = h + "px";
     }
     const img = document.createElement("img");
     img.src = ICON;
