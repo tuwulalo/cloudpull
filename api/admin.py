@@ -63,17 +63,31 @@ def admin_root(request: Request) -> HTMLResponse:
     return HTMLResponse(_login_html())
 
 
+@router.get("/admin/login")
+def admin_login_get() -> RedirectResponse:
+    # /admin/login is the POST target of the sign-in form. A bare GET (typed
+    # URL or bookmark) should land on the login page, not dump a raw 422.
+    return RedirectResponse(url="/admin", status_code=307)
+
+
 @router.post("/admin/login")
 def admin_login(
     request: Request,
     response: Response,
-    username: str = Form(...),
-    password: str = Form(...),
-    code: str = Form(...),
+    username: str = Form(""),
+    password: str = Form(""),
+    code: str = Form(""),
 ) -> Response:
     ip = _client_ip(request)
     if not _login_allowed(ip):
         return HTMLResponse(_login_html("Too many attempts. Try again later."), status_code=429)
+
+    # Empty fields render the friendly login page, not FastAPI's raw JSON error.
+    if not (username.strip() and password.strip() and code.strip()):
+        return HTMLResponse(
+            _login_html("Enter your username, password and 2FA code."),
+            status_code=400,
+        )
 
     user_ok = username.strip() == (store.get_setting("admin_user") or "")
     pw_ok = store.verify_password(password, store.get_setting("admin_pw"))
