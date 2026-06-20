@@ -1,5 +1,9 @@
 # Core + web API
 yt-dlp>=2026.6.9
+# Required by yt-dlp to embed cover art / tags into FLAC, M4A and Opus
+# (mp3 uses ffmpeg, but those formats go through mutagen). Without it, any
+# download with embed_thumbnail=true for those formats fails in postprocessing.
+mutagen>=1.47
 fastapi>=0.137
 uvicorn[standard]>=0.49
 
