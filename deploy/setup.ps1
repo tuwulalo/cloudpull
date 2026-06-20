@@ -53,19 +53,17 @@ if (-not (Test-Path "$Bin\caddy.exe")) {
 $caddy = "$Bin\caddy.exe"
 
 Step 'Getting the code'
-if (Test-Path (Join-Path $Root '.git')) {
-  git -C $Root fetch --depth 1 origin main
-  git -C $Root reset --hard origin/main
-} elseif ((Get-ChildItem $Root -Force | Where-Object { $_.Name -ne 'bin' } | Measure-Object).Count -gt 0 -or (Test-Path $Bin)) {
-  # Directory already has files (e.g. bin\caddy.exe) but is not a git repo yet.
-  git -C $Root init
-  git -C $Root remote remove origin 2>$null
-  git -C $Root remote add origin $Repo
-  git -C $Root fetch --depth 1 origin main
-  git -C $Root checkout -f -B main origin/main
+# Robust against any prior state: no dir, dir with files but no repo, a bare
+# .git from a failed run, or a full clone. Avoids `2>$null` on git (which turns
+# native stderr into a terminating error under ErrorActionPreference=Stop).
+if (-not (Test-Path (Join-Path $Root '.git'))) { git -C $Root init }
+if ((git -C $Root remote) -contains 'origin') {
+  git -C $Root remote set-url origin $Repo
 } else {
-  git clone --depth 1 $Repo $Root
+  git -C $Root remote add origin $Repo
 }
+git -C $Root fetch --depth 1 origin main
+git -C $Root checkout -f -B main origin/main
 
 Step 'Python backend (venv + deps)'
 $py = Join-Path $Root '.venv\Scripts\python.exe'
