@@ -25,6 +25,11 @@ cloudpull.cloud, www.cloudpull.cloud {
 		}
 	}
 
+	# Admin panel (also served by the API).
+	handle /admin* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
 	# Next.js landing (everything else).
 	handle {
 		reverse_proxy 127.0.0.1:3000

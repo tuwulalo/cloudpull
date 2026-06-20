@@ -8,6 +8,9 @@ downloads/
 *.part
 *.ytdl
 
+# Admin DB + analytics (contains admin password hash + 2FA secret)
+data/
+
 # Secrets
 .env
 .env.*

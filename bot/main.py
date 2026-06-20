@@ -44,6 +44,7 @@ sys.path.insert(0, str(BASE_DIR))
 load_dotenv(BASE_DIR / ".env")
 
 from core import DownloadError, download, get_info, max_workers  # noqa: E402
+from api import store  # noqa: E402
 
 TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 DOWNLOADS = BASE_DIR / "downloads" / "bot"
@@ -116,7 +117,7 @@ def _extract_cover(audio_path: str, out_dir: Path) -> Path | None:
 
 
 def _do_download(url: str, fmt: str, out_dir: str) -> list[str]:
-    return download(url, fmt, "320", out_dir, True)
+    return download(url, fmt, "320", out_dir, True, proxy=store.pick_proxy())
 
 
 async def _run_download(url: str, fmt: str) -> list[str]:
@@ -139,19 +140,22 @@ async def _process_download(
         try:
             files = await _run_download(url, fmt)
         except DownloadError as exc:
+            store.record("download", fmt=fmt, ok=False)
             await status.edit_text(f"Download failed: {html.escape(str(exc))}")
             return
         except Exception:  # noqa: BLE001
+            store.record("download", fmt=fmt, ok=False)
             await status.edit_text("Download failed unexpectedly. Try again.")
             return
     # Upload outside the slot so the next queued download can start immediately.
     await _deliver(status, files, title, uploader)
+    store.record("download", fmt=fmt, ok=True)
 
 
 async def _process_info(status: Message, url: str) -> None:
     """Fetch metadata and show the format buttons. Runs as a background task."""
     try:
-        info = await asyncio.to_thread(get_info, url)
+        info = await asyncio.to_thread(get_info, url, store.pick_proxy())
     except DownloadError as exc:
         await status.edit_text(f"Could not read this link: {html.escape(str(exc))}")
         return

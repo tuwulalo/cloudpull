@@ -51,6 +51,15 @@ AUDIO_FORMATS: dict[str, dict[str, Any]] = {
 # Bitrates for lossy formats (kbps). "0" = best available (VBR).
 QUALITIES: list[str] = ["320", "256", "192", "128"]
 
+# Retry/backoff so transient SoundCloud rate limits (429) recover instead of
+# failing outright, with a small pause between extractor requests for politeness.
+_RESILIENCE: dict[str, Any] = {
+    "retries": 5,
+    "extractor_retries": 3,
+    "fragment_retries": 5,
+    "sleep_interval_requests": 0.7,
+}
+
 
 def max_workers() -> int:
     """How many downloads to run in parallel, tuned to the host.
@@ -110,17 +119,20 @@ def _normalize_info(info: dict[str, Any]) -> dict[str, Any]:
     return {"type": "track", **_track_brief(info)}
 
 
-def get_info(url: str) -> dict[str, Any]:
+def get_info(url: str, proxy: Optional[str] = None) -> dict[str, Any]:
     """Return metadata for a link without downloading the file."""
     if not is_supported_url(url):
         raise DownloadError("Only SoundCloud links are supported")
-    opts = {
+    opts: dict[str, Any] = {
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
         "noplaylist": False,
         "extract_flat": False,
+        **_RESILIENCE,
     }
+    if proxy:
+        opts["proxy"] = proxy
     try:
         with YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -170,6 +182,7 @@ def download(
     out_dir: str = "downloads",
     embed_thumbnail: bool = True,
     progress_hook: Optional[Callable[[dict[str, Any]], None]] = None,
+    proxy: Optional[str] = None,
 ) -> list[str]:
     """Download a track or a whole set/playlist and convert to the chosen format.
 
@@ -194,7 +207,10 @@ def download(
         "ignoreerrors": False,
         "noprogress": True,
         "postprocessors": _build_postprocessors(fmt, quality, embed_thumbnail),
+        **_RESILIENCE,
     }
+    if proxy:
+        opts["proxy"] = proxy
     if progress_hook:
         opts["progress_hooks"] = [progress_hook]
 

@@ -41,6 +41,7 @@ from core import (  # noqa: E402
     is_supported_url,
     max_workers,
 )
+from api import admin, store  # noqa: E402
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DOWNLOADS_DIR = BASE_DIR / "downloads"
@@ -63,6 +64,7 @@ DOWNLOAD_TTL = 1800  # keep a finished download this many seconds, then prune
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    store.init()
     cleaner = asyncio.create_task(_cleanup_loop())
     try:
         yield
@@ -78,6 +80,9 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
+
+# Admin panel (analytics + proxies), mounted at /admin.
+app.include_router(admin.router)
 
 # In-memory job state. Good enough for a single user / dev mode.
 _jobs: dict[str, dict[str, Any]] = {}
@@ -148,6 +153,16 @@ class DownloadRequest(BaseModel):
     embed_thumbnail: bool = True
 
 
+# Dedupe cache: identical (url, format, quality) requests reuse an already
+# produced file while it still exists, cutting repeat load on SoundCloud and CPU.
+_cache: dict[str, dict[str, Any]] = {}
+_cache_lock = threading.Lock()
+
+
+def _cache_key(req: DownloadRequest) -> str:
+    return f"{req.url.strip()}|{req.format.lower()}|{req.quality}"
+
+
 def _set_job(job_id: str, **fields: Any) -> None:
     with _jobs_lock:
         _jobs[job_id].update(fields)
@@ -198,6 +213,7 @@ def _run_job(job_id: str, req: DownloadRequest) -> None:
             out_dir=str(out_dir),
             embed_thumbnail=req.embed_thumbnail,
             progress_hook=hook,
+            proxy=store.pick_proxy(),
         )
 
         if len(files) == 1:
@@ -221,15 +237,31 @@ def _run_job(job_id: str, req: DownloadRequest) -> None:
             filename=filename,
             file_count=len(files),
         )
+        with _cache_lock:
+            _cache[_cache_key(req)] = {
+                "result": result_path,
+                "filename": filename,
+                "file_count": len(files),
+            }
+        store.record("download", fmt=req.format, ok=True)
     except DownloadError as exc:
         _set_job(job_id, status="error", error=str(exc))
+        store.record("download", fmt=req.format, ok=False)
     except Exception:  # noqa: BLE001 - never leak internal details to the client
         _set_job(job_id, status="error", error="Internal error during download")
+        store.record("download", fmt=req.format, ok=False)
 
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/api/hit")
+def api_hit() -> dict[str, bool]:
+    """Lightweight visit beacon called once per landing page load."""
+    store.record("visit")
+    return {"ok": True}
 
 
 @app.get("/api/formats")
@@ -253,7 +285,7 @@ def api_info(req: InfoRequest, request: Request) -> dict[str, Any]:
     if not _rate_ok(_client_ip(request)):
         raise HTTPException(status_code=429, detail="Too many requests, slow down")
     try:
-        return downloader.get_info(url)
+        return downloader.get_info(url, proxy=store.pick_proxy())
     except DownloadError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -273,6 +305,28 @@ def api_download(req: DownloadRequest, request: Request) -> dict[str, str]:
         raise HTTPException(status_code=400, detail="Invalid quality")
     if not _rate_ok(_client_ip(request)):
         raise HTTPException(status_code=429, detail="Too many requests, slow down")
+
+    # Serve from cache if this exact request was produced recently.
+    with _cache_lock:
+        hit = _cache.get(_cache_key(req))
+    if hit and os.path.exists(hit["result"]):
+        try:
+            os.utime(os.path.dirname(hit["result"]), None)  # defer cleanup
+        except OSError:
+            pass
+        job_id = uuid.uuid4().hex[:12]
+        with _jobs_lock:
+            _jobs[job_id] = {
+                "id": job_id,
+                "status": "done",
+                "percent": 100.0,
+                "result": hit["result"],
+                "filename": hit["filename"],
+                "file_count": hit.get("file_count", 1),
+                "cached": True,
+            }
+        store.record("download", fmt=req.format, ok=True)
+        return {"job_id": job_id}
 
     job_id = uuid.uuid4().hex[:12]
     with _jobs_lock:

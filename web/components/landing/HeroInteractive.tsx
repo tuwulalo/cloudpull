@@ -8,6 +8,7 @@ import {
   fetchInfo,
   fileUrl,
   progressUrl,
+  recordVisit,
   startDownload,
 } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
@@ -70,6 +71,11 @@ export default function HeroInteractive() {
   const downloadedRef = useRef<string | null>(null);
 
   useEffect(() => () => esRef.current?.close(), []);
+
+  // Count one visit per page load (best-effort).
+  useEffect(() => {
+    recordVisit();
+  }, []);
 
   const closeStream = () => {
     esRef.current?.close();

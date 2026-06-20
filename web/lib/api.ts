@@ -84,6 +84,12 @@ export function startDownload(params: {
   return postJson<{ job_id: string }>("/api/download", params);
 }
 
+export function recordVisit(): void {
+  fetch(`${API_BASE}/api/hit`, { method: "POST", keepalive: true }).catch(() => {
+    // analytics is best-effort; never block the page on it
+  });
+}
+
 export function fileUrl(jobId: string): string {
   return `${API_BASE}/api/file/${jobId}`;
 }
