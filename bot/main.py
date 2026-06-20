@@ -47,6 +47,10 @@ DOWNLOADS = BASE_DIR / "downloads" / "bot"
 TELEGRAM_LIMIT = 50 * 1024 * 1024  # bots may send files up to 50 MB
 WEB_APP = "https://cloudpull.cloud"
 
+# Branding caption attached to every file. It travels with the message when a
+# user forwards it, so the source stays visible (clickable link + bot mention).
+BRAND = '⬇️ Downloaded with <a href="https://cloudpull.cloud">CloudPull</a> · @cloudpullbot'
+
 FORMATS = ["mp3", "m4a", "flac", "wav", "opus"]
 SC_RE = re.compile(r"https?://(?:www\.|m\.|on\.)?soundcloud\.com/\S+", re.IGNORECASE)
 
@@ -83,6 +87,7 @@ async def _deliver(
 ) -> None:
     """Send the produced file(s) and clean up. `status` is the progress message."""
     out_dir = Path(files[0]).parent
+    caption = f"🎧 <b>{html.escape(title)}</b>\n{BRAND}" if title else BRAND
     try:
         if len(files) == 1:
             path = files[0]
@@ -97,6 +102,7 @@ async def _deliver(
                 audio=FSInputFile(path),
                 title=title or None,
                 performer=uploader or None,
+                caption=caption,
             )
         else:
             zip_path = out_dir / f"{_safe(title or 'cloudpull-set')}.zip"
@@ -110,7 +116,7 @@ async def _deliver(
                 )
                 return
             await status.edit_text("⬆️ Uploading...")
-            await status.answer_document(document=FSInputFile(str(zip_path)))
+            await status.answer_document(document=FSInputFile(str(zip_path)), caption=caption)
         await status.delete()
     finally:
         shutil.rmtree(out_dir, ignore_errors=True)
