@@ -35,6 +35,20 @@ AUDIO_FORMATS: dict[str, dict[str, Any]] = {
 QUALITIES: list[str] = ["320", "256", "192", "128"]
 
 
+def max_workers() -> int:
+    """How many downloads to run in parallel, tuned to the host.
+
+    Each job is mostly network wait plus a short ffmpeg transcode, so we allow
+    roughly two per core. Override with the CLOUDPULL_MAX_CONCURRENCY env var
+    (a positive integer) to push the VPS harder or hold it back.
+    """
+    env = os.environ.get("CLOUDPULL_MAX_CONCURRENCY", "").strip()
+    if env.isdigit() and int(env) > 0:
+        return int(env)
+    cpu = os.cpu_count() or 2
+    return min(12, max(2, cpu * 2))
+
+
 def _best_thumb(info: dict[str, Any] | None) -> Optional[str]:
     """Pick the highest-resolution cover image."""
     if not info:

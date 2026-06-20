@@ -21,6 +21,7 @@ import subprocess
 import sys
 import uuid
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from aiogram import Bot, Dispatcher, F
@@ -41,7 +42,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 load_dotenv(BASE_DIR / ".env")
 
-from core import DownloadError, download, get_info  # noqa: E402
+from core import DownloadError, download, get_info, max_workers  # noqa: E402
 
 TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 DOWNLOADS = BASE_DIR / "downloads" / "bot"
@@ -60,6 +61,20 @@ dp = Dispatcher()
 # Short-lived map of inline-button key -> request data (callback_data is limited
 # to 64 bytes, so we cannot put the URL in it directly).
 PENDING: dict[str, dict] = {}
+
+# Parallelism tuned to the host. Downloads run in this pool (bounded by the
+# semaphore); each handler offloads its work to a background task so the polling
+# loop never blocks waiting on a download, and multiple users are served at once.
+_WORKERS = max_workers()
+_pool = ThreadPoolExecutor(max_workers=_WORKERS, thread_name_prefix="cloudpull-dl")
+_sem = asyncio.Semaphore(_WORKERS)
+_tasks: set[asyncio.Task] = set()
+
+
+def _spawn(coro) -> None:
+    task = asyncio.create_task(coro)
+    _tasks.add(task)
+    task.add_done_callback(_tasks.discard)
 
 
 def format_keyboard(key: str) -> InlineKeyboardMarkup:
@@ -95,9 +110,67 @@ def _extract_cover(audio_path: str, out_dir: Path) -> Path | None:
     return cover if cover.exists() and cover.stat().st_size > 0 else None
 
 
+def _do_download(url: str, fmt: str, out_dir: str) -> list[str]:
+    return download(url, fmt, "320", out_dir, True)
+
+
 async def _run_download(url: str, fmt: str) -> list[str]:
     out_dir = DOWNLOADS / uuid.uuid4().hex[:10]
-    return await asyncio.to_thread(download, url, fmt, "320", str(out_dir), True)
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_pool, _do_download, url, fmt, str(out_dir))
+
+
+async def _process_download(
+    status: Message,
+    url: str,
+    fmt: str,
+    title: str | None = None,
+    uploader: str | None = None,
+) -> None:
+    """Take a worker slot, download, then deliver. Runs as a background task, so
+    the polling loop stays free and several users download at the same time."""
+    async with _sem:
+        await status.edit_text(f"⏳ Downloading {fmt.upper()}...")
+        try:
+            files = await _run_download(url, fmt)
+        except DownloadError as exc:
+            await status.edit_text(f"Download failed: {html.escape(str(exc))}")
+            return
+        except Exception:  # noqa: BLE001
+            await status.edit_text("Download failed unexpectedly. Try again.")
+            return
+    # Upload outside the slot so the next queued download can start immediately.
+    await _deliver(status, files, title, uploader)
+
+
+async def _process_info(status: Message, url: str) -> None:
+    """Fetch metadata and show the format buttons. Runs as a background task."""
+    try:
+        info = await asyncio.to_thread(get_info, url)
+    except DownloadError as exc:
+        await status.edit_text(f"Could not read this link: {html.escape(str(exc))}")
+        return
+    except Exception:  # noqa: BLE001
+        await status.edit_text("Could not read this link. Is it a public SoundCloud URL?")
+        return
+
+    key = uuid.uuid4().hex[:10]
+    PENDING[key] = {
+        "url": url,
+        "title": info.get("title"),
+        "uploader": info.get("uploader"),
+    }
+    if info.get("type") == "playlist":
+        caption = (
+            f"<b>{html.escape(info.get('title') or 'Set')}</b>\n"
+            f"{info.get('track_count') or 0} tracks\n\nChoose a format:"
+        )
+    else:
+        caption = (
+            f"<b>{html.escape(info.get('title') or 'Track')}</b>\n"
+            f"{html.escape(info.get('uploader') or '')}\n\nChoose a format:"
+        )
+    await status.edit_text(caption, reply_markup=format_keyboard(key))
 
 
 async def _deliver(
@@ -181,16 +254,8 @@ async def on_format_command(message: Message, command: CommandObject) -> None:
         await message.reply(f"Send the link too:\n<code>/{fmt} https://soundcloud.com/...</code>")
         return
 
-    status = await message.reply(f"⏳ Downloading {fmt.upper()}...")
-    try:
-        files = await _run_download(match.group(0), fmt)
-    except DownloadError as exc:
-        await status.edit_text(f"Download failed: {html.escape(str(exc))}")
-        return
-    except Exception:  # noqa: BLE001
-        await status.edit_text("Download failed unexpectedly. Try again.")
-        return
-    await _deliver(status, files)
+    status = await message.reply(f"⏳ {fmt.upper()} queued...")
+    _spawn(_process_download(status, match.group(0), fmt))
 
 
 @dp.message(F.text)
@@ -202,35 +267,8 @@ async def on_text(message: Message) -> None:
         )
         return
 
-    url = match.group(0)
     status = await message.reply("🔎 Reading the link...")
-    try:
-        info = await asyncio.to_thread(get_info, url)
-    except DownloadError as exc:
-        await status.edit_text(f"Could not read this link: {html.escape(str(exc))}")
-        return
-    except Exception:  # noqa: BLE001
-        await status.edit_text("Could not read this link. Is it a public SoundCloud URL?")
-        return
-
-    key = uuid.uuid4().hex[:10]
-    PENDING[key] = {
-        "url": url,
-        "title": info.get("title"),
-        "uploader": info.get("uploader"),
-    }
-
-    if info.get("type") == "playlist":
-        caption = (
-            f"<b>{html.escape(info.get('title') or 'Set')}</b>\n"
-            f"{info.get('track_count') or 0} tracks\n\nChoose a format:"
-        )
-    else:
-        caption = (
-            f"<b>{html.escape(info.get('title') or 'Track')}</b>\n"
-            f"{html.escape(info.get('uploader') or '')}\n\nChoose a format:"
-        )
-    await status.edit_text(caption, reply_markup=format_keyboard(key))
+    _spawn(_process_info(status, match.group(0)))
 
 
 @dp.callback_query(F.data.startswith("dl:"))
@@ -246,20 +284,12 @@ async def on_choose_format(callback: CallbackQuery) -> None:
         await callback.answer("This request expired. Send the link again.", show_alert=True)
         return
     await callback.answer()
-
+    PENDING.pop(key, None)
     message = callback.message
-    await message.edit_text(f"⏳ Downloading and converting to {fmt.upper()}...")
-    try:
-        files = await _run_download(data["url"], fmt)
-    except DownloadError as exc:
-        await message.edit_text(f"Download failed: {html.escape(str(exc))}")
-        return
-    except Exception:  # noqa: BLE001
-        await message.edit_text("Download failed unexpectedly. Try again.")
-        return
-    finally:
-        PENDING.pop(key, None)
-    await _deliver(message, files, data.get("title"), data.get("uploader"))
+    await message.edit_text(f"⏳ {fmt.upper()} queued...")
+    _spawn(
+        _process_download(message, data["url"], fmt, data.get("title"), data.get("uploader"))
+    )
 
 
 async def main() -> None:

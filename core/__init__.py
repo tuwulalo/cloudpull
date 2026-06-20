@@ -10,6 +10,7 @@ from .downloader import (
     DownloadError,
     download,
     get_info,
+    max_workers,
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "DownloadError",
     "download",
     "get_info",
+    "max_workers",
 ]

@@ -18,6 +18,7 @@ import sys
 import threading
 import uuid
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Optional
 
@@ -28,7 +29,13 @@ from pydantic import BaseModel
 
 # Make the core package importable when running from the project root.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from core import AUDIO_FORMATS, QUALITIES, DownloadError, downloader  # noqa: E402
+from core import (  # noqa: E402
+    AUDIO_FORMATS,
+    QUALITIES,
+    DownloadError,
+    downloader,
+    max_workers,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DOWNLOADS_DIR = BASE_DIR / "downloads"
@@ -47,6 +54,12 @@ app.add_middleware(
 # In-memory job state. Good enough for a single user / dev mode.
 _jobs: dict[str, dict[str, Any]] = {}
 _jobs_lock = threading.Lock()
+
+# Bounded worker pool: downloads run in parallel up to the host limit; any extra
+# requests wait in the queue (status stays "queued" until a worker frees up).
+_executor = ThreadPoolExecutor(
+    max_workers=max_workers(), thread_name_prefix="cloudpull-dl"
+)
 
 
 class InfoRequest(BaseModel):
@@ -177,8 +190,7 @@ def api_download(req: DownloadRequest) -> dict[str, str]:
     with _jobs_lock:
         _jobs[job_id] = {"id": job_id, "status": "queued", "percent": 0.0}
 
-    thread = threading.Thread(target=_run_job, args=(job_id, req), daemon=True)
-    thread.start()
+    _executor.submit(_run_job, job_id, req)
     return {"job_id": job_id}
 
 
