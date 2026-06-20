@@ -318,20 +318,13 @@ export default function HeroInteractive() {
       </div>
 
       {/* product card (live) */}
-      <div
-        style={{
-          maxWidth: 560,
-          margin: "46px auto 0",
-          transform: "translateY(1px)",
-        }}
-      >
+      <div style={{ maxWidth: 560, margin: "46px auto 0" }}>
         <div
           style={{
             background: "#fff",
             border: "1px solid #e7e7e3",
-            borderRadius: "18px 18px 0 0",
-            borderBottom: "none",
-            boxShadow: "0 -2px 40px rgba(20,20,26,.06)",
+            borderRadius: 18,
+            boxShadow: "0 18px 48px rgba(20,20,26,.10)",
             overflow: "hidden",
             textAlign: "left",
           }}

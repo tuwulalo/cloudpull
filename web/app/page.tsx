@@ -201,8 +201,11 @@ export default function LandingPage() {
       </header>
 
       {/* ============ HERO ============ */}
-      <section id="top" style={{ background: "#f7f7f5", borderBottom: "1px solid #ededea" }}>
-        <div id="get" style={{ ...container, padding: "72px 28px 0", textAlign: "center" }}>
+      <section
+        id="top"
+        style={{ background: "linear-gradient(180deg,#f7f7f5 0%,#f7f7f5 56%,#ffffff 100%)" }}
+      >
+        <div id="get" style={{ ...container, padding: "72px 28px 84px", textAlign: "center" }}>
           <div
             style={{
               display: "inline-flex",
