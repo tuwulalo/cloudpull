@@ -46,7 +46,9 @@ INSPECT_URLS = [
     for u in os.environ.get("GSC_INSPECT_URLS", "https://cloudpull.cloud/").split(",")
     if u.strip()
 ]
-REPORT_PATH = Path(__file__).resolve().parent.parent / "data" / "gsc-report.md"
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+REPORT_PATH = _DATA_DIR / "gsc-report.md"
+REPORT_JSON = _DATA_DIR / "gsc-report.json"  # read by the admin panel
 
 
 def _date(days_ago: int) -> str:
@@ -144,51 +146,62 @@ def _delta(cur: int, prev: int) -> str:
     return "(=)"
 
 
-def build() -> str:
+def collect() -> dict:
     wm, sc = _service()
-    cur = _totals(wm, _date(7), _date(1))      # last 7 days (excl. today, lagged)
-    prev = _totals(wm, _date(14), _date(8))    # the 7 days before that
-    queries = _top(wm, "query", _date(28), _date(1))
-    pages = _top(wm, "page", _date(28), _date(1))
-    sm = _sitemap(wm)
-    inspections = [(u, _inspect(sc, u)) for u in INSPECT_URLS]
+    return {
+        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+        "property": PROPERTY,
+        "period": {"start": _date(7), "end": _date(1)},
+        "current": _totals(wm, _date(7), _date(1)),    # last 7 days (lagged)
+        "previous": _totals(wm, _date(14), _date(8)),  # the 7 days before that
+        "queries": _top(wm, "query", _date(28), _date(1)),
+        "pages": _top(wm, "page", _date(28), _date(1)),
+        "sitemap": _sitemap(wm),
+        "inspections": [{"url": u, "state": _inspect(sc, u)} for u in INSPECT_URLS],
+    }
 
+
+def to_html(d: dict) -> str:
+    cur, prev = d["current"], d["previous"]
     lines = [
-        f"<b>CloudPull - Search Console</b> ({_date(7)} .. {_date(1)})",
+        f"<b>CloudPull - Search Console</b> ({d['period']['start']} .. {d['period']['end']})",
         "",
         "<b>Search (last 7 days vs previous 7)</b>",
         f"Clicks: {cur['clicks']} {_delta(cur['clicks'], prev['clicks'])}",
         f"Impressions: {cur['impressions']} {_delta(cur['impressions'], prev['impressions'])}",
         f"CTR: {cur['ctr']:.1f}%   Avg position: {cur['position']:.1f}",
     ]
-
-    if queries:
+    if d["queries"]:
         lines += ["", "<b>Top queries (28d)</b>"]
-        for q in queries:
+        for q in d["queries"]:
             lines.append(f"- {q['key']}: {q['clicks']} clk / {q['impressions']} imp, pos {q['position']:.1f}")
-    if pages:
+    if d["pages"]:
         lines += ["", "<b>Top pages (28d)</b>"]
-        for p in pages:
+        for p in d["pages"]:
             lines.append(f"- {p['key']}: {p['clicks']} clk / {p['impressions']} imp")
-
+    sm = d["sitemap"]
     lines += ["", "<b>Sitemap</b>"]
     if "error" in sm:
         lines.append(f"error: {sm['error']}")
     else:
-        pend = " (pending)" if sm["isPending"] else ""
+        pend = " (pending)" if sm.get("isPending") else ""
         lines.append(
             f"submitted {sm['submitted']} / indexed {sm['indexed']}, "
             f"errors {sm['errors']}, last read {sm['lastDownloaded']}{pend}"
         )
-
     lines += ["", "<b>Index status</b>"]
-    for url, state in inspections:
-        lines.append(f"- {url}: {state}")
-
-    if cur["impressions"] == 0 and not queries:
+    for ins in d["inspections"]:
+        lines.append(f"- {ins['url']}: {ins['state']}")
+    if cur["impressions"] == 0 and not d["queries"]:
         lines += ["", "<i>No search data yet - normal for a new property; check back in a few days.</i>"]
-
     return "\n".join(lines)
+
+
+def to_plain(d: dict) -> str:
+    html = to_html(d)
+    for tag in ("<b>", "</b>", "<i>", "</i>"):
+        html = html.replace(tag, "")
+    return html
 
 
 def _send_telegram(html: str) -> bool:
@@ -238,14 +251,15 @@ def main() -> None:
     if "--whoami" in sys.argv:
         whoami()
         return
-    html = build()
-    REPORT_PATH.parent.mkdir(exist_ok=True)
-    # Plain-text version for the file (strip the simple HTML tags).
-    plain = html.replace("<b>", "").replace("</b>", "").replace("<i>", "").replace("</i>", "")
+    data = collect()
+    _DATA_DIR.mkdir(exist_ok=True)
+    # JSON for the admin panel, markdown for humans / the file log.
+    REPORT_JSON.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    plain = to_plain(data)
     REPORT_PATH.write_text(plain, encoding="utf-8")
-    sent = _send_telegram(html)
+    sent = _send_telegram(to_html(data))
     print(plain)
-    print("\n[written to data/gsc-report.md" + ("; sent to Telegram]" if sent else "; Telegram not configured]"))
+    print("\n[wrote data/gsc-report.json + .md" + ("; sent to Telegram]" if sent else "; Telegram not configured]"))
 
 
 if __name__ == "__main__":

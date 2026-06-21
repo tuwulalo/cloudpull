@@ -6,8 +6,10 @@ Mounted under /admin (Caddy routes /admin* to this API).
 
 from __future__ import annotations
 
+import json
 import time
 from collections import deque
+from pathlib import Path
 
 from fastapi import APIRouter, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -142,6 +144,20 @@ def admin_set_proxies(request: Request, body: ProxiesBody) -> JSONResponse:
         # scheme (anti-SSRF). Tell the admin which entries failed.
         return JSONResponse({"error": str(exc)}, status_code=400)
     return JSONResponse({"proxies": store.list_proxies()})
+
+
+# Latest Google Search Console snapshot, written weekly by scripts/gsc_report.py.
+_GSC_REPORT = Path(__file__).resolve().parent.parent / "data" / "gsc-report.json"
+
+
+@router.get("/admin/api/gsc")
+def admin_gsc(request: Request) -> JSONResponse:
+    _require(request)
+    try:
+        data = json.loads(_GSC_REPORT.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = {}
+    return JSONResponse(data)
 
 
 # --- html -------------------------------------------------------------------
@@ -373,6 +389,13 @@ _DASHBOARD_HTML = (
   </div>
 
   <div class=card style="margin-top:14px;padding:20px 22px">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:14px">
+      <div class=ct>Search Console (Google)</div><div class=muted id=gscupd></div>
+    </div>
+    <div id=gscbody><div class=muted>Loading...</div></div>
+  </div>
+
+  <div class=card style="margin-top:14px;padding:20px 22px">
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:6px">
       <div class=ct>Proxies</div><div class=muted id=pcount></div>
     </div>
@@ -450,7 +473,37 @@ saveproxies.onclick=async()=>{
     setTimeout(()=>{el.textContent='';el.className='';},7000);}
 };
 
-load();loadProxies();setInterval(load,30000);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function loadGsc(){
+  let d={};
+  try{ d=await (await fetch('/admin/api/gsc')).json(); }catch(e){}
+  const body=document.getElementById('gscbody'), upd=document.getElementById('gscupd');
+  if(!d||!d.current){ upd.textContent='';
+    body.innerHTML='<div class=muted>No report yet. Runs weekly once the GSC API is set up (scripts/gsc_report.py).</div>';
+    return; }
+  upd.textContent='updated '+(d.generated_at||'').slice(0,10);
+  const c=d.current, p=d.previous||{};
+  const dl=(a,b)=>{const x=(a||0)-(b||0);return x>0?` +${x}`:(x<0?` ${x}`:'');};
+  let h='<div class="grid g4" style="gap:14px">'
+    +`<div class=card><div class=k>Clicks 7d</div><div class=v tnum style="font-size:26px">${nf(c.clicks)}<span class=sub style="display:inline;margin-left:5px">${dl(c.clicks,p.clicks)}</span></div></div>`
+    +`<div class=card><div class=k>Impressions 7d</div><div class=v tnum style="font-size:26px">${nf(c.impressions)}</div></div>`
+    +`<div class=card><div class=k>CTR</div><div class=v tnum style="font-size:26px">${(c.ctr||0).toFixed(1)}%</div></div>`
+    +`<div class=card><div class=k>Avg position</div><div class=v tnum style="font-size:26px">${(c.position||0).toFixed(1)}</div></div>`
+    +'</div>';
+  if(d.queries&&d.queries.length){
+    h+='<div class=ct style="margin:16px 0 10px">Top queries (28d)</div>';
+    h+=d.queries.map(q=>`<div class=frow><span class=fname style="width:auto;flex:1;font-weight:600">${esc(q.key)}</span><span class=fcount>${nf(q.clicks)} clk</span></div>`).join('');
+  }
+  const sm=d.sitemap||{};
+  h+='<div class=ct style="margin:16px 0 6px">Sitemap & index</div>';
+  h+= sm.error ? `<div class=muted>sitemap: ${esc(sm.error)}</div>`
+    : `<div class=brk style="margin-bottom:6px">submitted <b>${esc(sm.submitted)}</b> / indexed <b>${esc(sm.indexed)}</b>, errors ${esc(sm.errors)}</div>`;
+  (d.inspections||[]).forEach(i=>{ h+=`<div class=muted style="font-size:12.5px">${esc(i.url)}: ${esc(i.state)}</div>`; });
+  body.innerHTML=h;
+}
+
+load();loadProxies();loadGsc();setInterval(load,30000);
 </script>"""
     + _FOOT
 )
