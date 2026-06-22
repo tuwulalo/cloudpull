@@ -1,8 +1,8 @@
 """CloudPull Telegram bot (Phase 2).
 
 Reuses the shared core/ engine. Two ways to use it:
-  - Send a SoundCloud link, then pick a format with inline buttons.
-  - Use a direct command: /mp3 <link>, /m4a, /flac, /wav, /opus.
+  - Send a SoundCloud link: it downloads straight away as mp3 (the default).
+  - Use a direct command for another format: /m4a <link>, /flac, /wav, /opus.
 
 Run from the project root:
     python -m bot.main
@@ -30,11 +30,8 @@ from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import (
     BotCommand,
-    CallbackQuery,
     ForceReply,
     FSInputFile,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
     Message,
 )
 from dotenv import load_dotenv
@@ -43,7 +40,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 load_dotenv(BASE_DIR / ".env")
 
-from core import DownloadError, download, get_info, max_workers  # noqa: E402
+from core import DownloadError, download, max_workers  # noqa: E402
 from api import store  # noqa: E402
 
 TOKEN = os.environ.get("BOT_TOKEN", "").strip()
@@ -56,13 +53,11 @@ WEB_APP = "https://cloudpull.cloud"
 BRAND = '⬇️ Downloaded with <a href="https://cloudpull.cloud">CloudPull</a> · @cloudpullbot'
 
 FORMATS = ["mp3", "m4a", "flac", "wav", "opus"]
+# A bare link with no command downloads in this format, no questions asked.
+DEFAULT_FORMAT = "mp3"
 SC_RE = re.compile(r"https?://(?:www\.|m\.|on\.)?soundcloud\.com/\S+", re.IGNORECASE)
 
 dp = Dispatcher()
-
-# Short-lived map of inline-button key -> request data (callback_data is limited
-# to 64 bytes, so we cannot put the URL in it directly).
-PENDING: dict[str, dict] = {}
 
 # Maps a "send me the link" prompt message id -> the format the user picked, so a
 # bare /mp3 (with no link) can ask for the link and then download in that format.
@@ -81,15 +76,6 @@ def _spawn(coro) -> None:
     task = asyncio.create_task(coro)
     _tasks.add(task)
     task.add_done_callback(_tasks.discard)
-
-
-def format_keyboard(key: str) -> InlineKeyboardMarkup:
-    buttons = [
-        InlineKeyboardButton(text=f.upper(), callback_data=f"dl:{key}:{f}")
-        for f in FORMATS
-    ]
-    rows = [buttons[i : i + 3] for i in range(0, len(buttons), 3)]
-    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _safe(name: str) -> str:
@@ -152,36 +138,6 @@ async def _process_download(
     store.record("download", fmt=fmt, ok=True)
 
 
-async def _process_info(status: Message, url: str) -> None:
-    """Fetch metadata and show the format buttons. Runs as a background task."""
-    try:
-        info = await asyncio.to_thread(get_info, url, store.pick_proxy())
-    except DownloadError as exc:
-        await status.edit_text(f"Could not read this link: {html.escape(str(exc))}")
-        return
-    except Exception:  # noqa: BLE001
-        await status.edit_text("Could not read this link. Is it a public SoundCloud URL?")
-        return
-
-    key = uuid.uuid4().hex[:10]
-    PENDING[key] = {
-        "url": url,
-        "title": info.get("title"),
-        "uploader": info.get("uploader"),
-    }
-    if info.get("type") == "playlist":
-        caption = (
-            f"<b>{html.escape(info.get('title') or 'Set')}</b>\n"
-            f"{info.get('track_count') or 0} tracks\n\nChoose a format:"
-        )
-    else:
-        caption = (
-            f"<b>{html.escape(info.get('title') or 'Track')}</b>\n"
-            f"{html.escape(info.get('uploader') or '')}\n\nChoose a format:"
-        )
-    await status.edit_text(caption, reply_markup=format_keyboard(key))
-
-
 async def _deliver(
     status: Message,
     files: list[str],
@@ -232,9 +188,9 @@ async def on_start(message: Message) -> None:
     await message.answer(
         "👋 <b>CloudPull</b>\n\n"
         "Download <b>SoundCloud</b> tracks and sets with cover art and tags.\n\n"
-        "<b>Two ways:</b>\n"
-        "• Send a link, then tap a format.\n"
-        "• Or use a direct command, e.g. <code>/mp3 https://soundcloud.com/...</code>\n\n"
+        "Just <b>send a link</b> - it arrives as <b>mp3</b>.\n"
+        "Want a different format? Use a command with the link:\n"
+        "<code>/flac https://soundcloud.com/...</code>\n\n"
         "Formats: /mp3 /m4a /flac /wav /opus"
     )
 
@@ -243,9 +199,9 @@ async def on_start(message: Message) -> None:
 async def on_help(message: Message) -> None:
     await message.answer(
         "<b>How to use</b>\n\n"
-        "Send a SoundCloud track or set link, then pick a format with the buttons.\n\n"
-        "Or download straight away with a command:\n"
-        "<code>/mp3 &lt;link&gt;</code>, <code>/m4a</code>, <code>/flac</code>, "
+        "Send a SoundCloud track or set link and it downloads as <b>mp3</b>.\n\n"
+        "For another format, use a command with the link:\n"
+        "<code>/m4a &lt;link&gt;</code>, <code>/flac</code>, "
         "<code>/wav</code>, <code>/opus</code>\n\n"
         "Single tracks arrive as audio; a set arrives as a zip. "
         "Telegram limits bot uploads to 50 MB; bigger files are on "
@@ -293,33 +249,14 @@ async def on_text(message: Message) -> None:
     match = SC_RE.search(message.text or "")
     if not match:
         await message.answer(
-            "Send a SoundCloud link, or use /mp3 /m4a /flac /wav /opus with a link."
+            "Send a SoundCloud link to get it as mp3, "
+            "or use /m4a /flac /wav /opus with a link for another format."
         )
         return
 
-    status = await message.reply("🔎 Reading the link...")
-    _spawn(_process_info(status, match.group(0)))
-
-
-@dp.callback_query(F.data.startswith("dl:"))
-async def on_choose_format(callback: CallbackQuery) -> None:
-    try:
-        _, key, fmt = callback.data.split(":")
-    except ValueError:
-        await callback.answer()
-        return
-
-    data = PENDING.get(key)
-    if not data:
-        await callback.answer("This request expired. Send the link again.", show_alert=True)
-        return
-    await callback.answer()
-    PENDING.pop(key, None)
-    message = callback.message
-    await message.edit_text(f"⏳ {fmt.upper()} queued...")
-    _spawn(
-        _process_download(message, data["url"], fmt, data.get("title"), data.get("uploader"))
-    )
+    # Bare link -> download as mp3 straight away, no format prompt.
+    status = await message.reply(f"⏳ {DEFAULT_FORMAT.upper()} queued...")
+    _spawn(_process_download(status, match.group(0), DEFAULT_FORMAT))
 
 
 async def main() -> None:
